@@ -67,7 +67,7 @@ def successful_runs(pr, workflows, config):
 
 STATES = {"continue", "needs-information", "needs-maintainer-decision", "blocked", "ready", "handoff", "support", "verified-fixed"}
 LABELS = {"needs-information", "needs-maintainer-decision", "review-ready"}
-CONTRACT_VERSION = 4
+CONTRACT_VERSION = 5
 
 
 def assessment(value, phase):

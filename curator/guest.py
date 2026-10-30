@@ -123,7 +123,10 @@ def main():
         guides = {e.get("part", {}).get("state", {}).get("input", {}).get("page") for e in tools
                   if e.get("part", {}).get("tool") == "curator_guide"
                   and e.get("part", {}).get("state", {}).get("status") == "completed"}
-        if not {"REVIEW.md", "REPORT.md", "PRS.md" if item_input["pr"] else "ISSUES.md"} <= guides:
+        required_guides = {"REVIEW.md", "REPORT.md", "PRS.md" if item_input["pr"] else "ISSUES.md"}
+        if item_input["pr"]:
+            required_guides.add("EVIDENCE.md")
+        if not required_guides <= guides:
             raise RuntimeError("Required runtime guides were not read")
         if any(e.get("part", {}).get("state", {}).get("status") == "error" for e in tools):
             if result["state"] in {"continue", "ready"}:

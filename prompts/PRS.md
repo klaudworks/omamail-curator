@@ -1,6 +1,6 @@
 # Pull requests
 
-Read baseline `CONTRIBUTING.md` and relevant discussion. It defines contribution and verification requirements. The controller already verified author eligibility and current CI; do not ask to rerun successful pipelines.
+Read baseline `CONTRIBUTING.md` and relevant discussion. It defines contribution and verification requirements, subject to the operator verification policy in [EVIDENCE.md](EVIDENCE.md); read that guide in either stage. The controller already verified author eligibility and current CI; do not ask to rerun successful pipelines.
 
 ## Completeness stage
 

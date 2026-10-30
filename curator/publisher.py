@@ -42,6 +42,8 @@ class Publisher:
         receipt = (f"[Commit {sha[:7]}](https://github.com/{self.config['repository']}/commit/{sha})" if sha else "")
         stage = "Final review" if phase == "final" else "Completeness check"
         owner = {"author": "Author", "maintainer": "Maintainer", "none": "No action required"}[result["next_step"]["owner"]]
+        if result["next_step"]["owner"] == "maintainer":
+            owner += " (" + " or ".join("@" + login for login in self.config["maintainers"]) + ")"
         report = ("## Curator update\n\n**Status:** " + titles[result["state"]] + " · " + stage
                   + "\n\n**Summary:** " + result["summary"]
                   + "\n\n**Findings**\n" + "\n".join("- " + finding for finding in result["findings"]) + warning

@@ -1,5 +1,13 @@
 # Verify the claim
 
+## Verification policy
+
+Contributors are not required to test anything by hand. Use automated tests, reproducible diagnostics and generated visual evidence for the changed behavior. Do not require contributor or reviewer testing on macOS or Windows. Missing hands-on or macOS/Windows results are not blockers or next steps; discard previous requests for them. This operator policy overrides older baseline manual-testing and platform-matrix requirements. Applicable Linux automated checks and the controller's CI gate still apply. Report what the evidence actually verifies.
+
+Inspect existing coverage and use targeted investigation before asking for more. A real verification gap must identify the scenario, expected observable result and smallest automated regression or capture the contributor's agent can add. Do not substitute a generic checklist, human retest or unavailable reviewer capability for a concrete gap.
+
+## Investigation
+
 Use the evidence index in `input.json`. Open details only for the question being decided:
 
 - Discussion: intent, objections, new proof and resolved findings.
