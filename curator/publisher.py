@@ -35,15 +35,17 @@ class Publisher:
         criteria_changed = snap.get("criteria_changed", (snap.get("previous") or {}).get("criteria_changed", False))
         if criteria_changed:
             warning = "\n\n**⚠️ THIS PR CHANGES THE RULES USED TO REVIEW IT**\nReview proposed criteria separately; execution and publication authority remain the curator policy."
-        titles = {"continue": "Review in progress", "needs-information": "A check is still needed",
-                  "needs-maintainer-decision": "A product decision is needed", "blocked": "An issue needs attention",
+        titles = {"continue": "Ready for final review", "needs-information": "Needs information",
+                  "needs-maintainer-decision": "Needs a product decision", "blocked": "Blocked",
                   "ready": "Ready for maintainer review", "handoff": "Ready for next steps",
                   "support": "Suggested next step", "verified-fixed": "The fix is verified"}
-        checks = " · ".join(f"[CI {i + 1}]({c['url']})" for i, c in enumerate(snap["ci"]))
         receipt = (f"[Commit {sha[:7]}](https://github.com/{self.config['repository']}/commit/{sha})" if sha else "")
-        if checks:
-            receipt += " · Checks passed: " + checks
-        report = ("## " + titles[result["state"]] + "\n\n" + result["body"] + warning
+        stage = "Final review" if phase == "final" else "Completeness check"
+        owner = {"author": "Author", "maintainer": "Maintainer", "none": "No action required"}[result["next_step"]["owner"]]
+        report = ("## Curator update\n\n**Status:** " + titles[result["state"]] + " · " + stage
+                  + "\n\n**Summary:** " + result["summary"]
+                  + "\n\n**Findings**\n" + "\n".join("- " + finding for finding in result["findings"]) + warning
+                  + f"\n\n**Next step — {owner}:** " + result["next_step"]["action"]
                   + f"\n\n**Security: {result['security']}**"
                   + (" · " + receipt if receipt else "")
                   + "\n\n_Automated by [omamail-curator](https://github.com/klaudworks/omamail-curator)._")

@@ -93,7 +93,10 @@ def validate_scope(result, snap, config, checkpoints):
         blocker = ("A maintainer has objected to this direction; resolve that objection first." if rejected else
                    "A maintainer needs to confirm this change to the product's direction.")
         if result["state"] != "needs-maintainer-decision":
-            result["body"] += "\n\n" + blocker
+            result["findings"] = [blocker, *result["findings"][:2]]
         result["state"] = "needs-maintainer-decision"
+        result["next_step"] = {"owner": "maintainer", "action": (
+            "Resolve the recorded objection and state whether this direction is accepted." if rejected else
+            "Confirm whether this product-direction change should proceed, and record the scope decision.")}
         if blocker not in result["blockers"]:
             result["blockers"] = [*result["blockers"], blocker]

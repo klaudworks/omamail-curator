@@ -1,8 +1,8 @@
 {
   "repository": "huacnlee/omamail",
-  "authors": ["klaudworks"],
-  "maintainers": ["klaudworks", "huacnlee"],
-  "publisher_login": "klaudworks",
+  "authors": ["your-github-login"],
+  "maintainers": ["your-github-login", "huacnlee"],
+  "publisher_login": "your-github-login",
   "token_file": "/absolute/private/path/github.token",
   "state_dir": "/absolute/private/path/curator-state",
   "transport": ["/absolute/path/to/guest-transport"],

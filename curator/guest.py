@@ -11,7 +11,7 @@ import urllib.parse
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from curator.prompts import SYSTEM, COMPLETENESS, FINAL
+from curator.prompts import SYSTEM, GUIDE_PAGES, guide, stage_prompt
 from curator.policy import assessment
 
 MODELS = {"completeness": "openai/gpt-6-luna#xhigh", "final": "openai/gpt-6.1-sol#xhigh"}
@@ -78,14 +78,16 @@ def main():
                "default_agent": "curator", "snapshots": False,
                "policies": [{"action": "provider.use", "resource": "*", "effect": "deny"},
                             {"action": "provider.use", "resource": "openai", "effect": "allow"}],
-               "agents": {"curator": {"mode": "primary", "system": SYSTEM + "\n" + (ROOT / "POLICY.md").read_text(), "permissions": rules}},
+                "agents": {"curator": {"mode": "primary", "system": SYSTEM, "permissions": rules}},
                "mcp": {"servers": {"curator": {"type": "local", "command": ["/usr/bin/python3", str(ROOT / "curator/evidence_tools.py")],
                     "environment": {"CURATOR_EVIDENCE": str(evidence)}, "codemode": False}}}}
         (workspace / "opencode.json").write_text(json.dumps(cfg))
+        for page in GUIDE_PAGES:
+            guide(page)  # Fail before inference if deployment omitted a linked guide.
         # V2 location activation is asynchronous; wait for its MCP catalog before
         # starting inference instead of allowing a tool-less model turn.
         wait_for_evidence(workspace)
-        prompt = COMPLETENESS if phase == "completeness" else FINAL
+        prompt = stage_prompt(phase)
         if request.get("luna"):
             (evidence / "luna.json").write_text(json.dumps(request["luna"], indent=2))
             prompt += "\nLuna's non-authoritative assessment is available as luna.json.\n"
@@ -113,9 +115,16 @@ def main():
         inspected = {e.get("part", {}).get("state", {}).get("input", {}).get("path") for e in tools
                      if e.get("part", {}).get("tool") == "curator_inspect"
                      and e.get("part", {}).get("state", {}).get("status") == "completed"}
-        required = {"input.json"} | {name for name in ("base/AGENTS.md", "base/CONTRIBUTING.md") if name in request["files"]}
+        item_input = json.loads((evidence / "input.json").read_text())
+        criteria = ["base/AGENTS.md"] + (["base/CONTRIBUTING.md"] if item_input["pr"] else [])
+        required = {"input.json"} | {name for name in criteria if name in request["files"]}
         if not required <= inspected:
             raise RuntimeError("Required evidence was not inspected through working tools")
+        guides = {e.get("part", {}).get("state", {}).get("input", {}).get("page") for e in tools
+                  if e.get("part", {}).get("tool") == "curator_guide"
+                  and e.get("part", {}).get("state", {}).get("status") == "completed"}
+        if not {"REVIEW.md", "REPORT.md", "PRS.md" if item_input["pr"] else "ISSUES.md"} <= guides:
+            raise RuntimeError("Required runtime guides were not read")
         if any(e.get("part", {}).get("state", {}).get("status") == "error" for e in tools):
             if result["state"] in {"continue", "ready"}:
                 raise RuntimeError("Tool failure cannot yield a passing gate")

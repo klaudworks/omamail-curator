@@ -67,11 +67,11 @@ def successful_runs(pr, workflows, config):
 
 STATES = {"continue", "needs-information", "needs-maintainer-decision", "blocked", "ready", "handoff", "support", "verified-fixed"}
 LABELS = {"needs-information", "needs-maintainer-decision", "review-ready"}
-CONTRACT_VERSION = 3
+CONTRACT_VERSION = 4
 
 
 def assessment(value, phase):
-    required = {"kind", "scope", "state", "body", "security", "blockers", "scope_decisions", "malicious"}
+    required = {"kind", "scope", "state", "summary", "findings", "next_step", "security", "blockers", "scope_decisions", "malicious"}
     if not isinstance(value, dict) or set(value) != required:
         raise Pause("Invalid model output fields")
     if value["kind"] not in {"bug", "feature", "disputed", "support"} or value["state"] not in STATES:
@@ -80,8 +80,20 @@ def assessment(value, phase):
         raise Pause("Invalid product-scope assessment")
     if value["security"] not in {"PASS", "BLOCK", "NOT VERIFIED"} or type(value["malicious"]) is not bool:
         raise Pause("Invalid security decision")
-    if not isinstance(value["body"], str) or not 20 <= len(value["body"]) <= 2400:
-        raise Pause("Invalid report body")
+    if not isinstance(value["summary"], str) or not 20 <= len(value["summary"]) <= 400:
+        raise Pause("Invalid report summary")
+    if (not isinstance(value["findings"], list) or not 1 <= len(value["findings"]) <= 3
+            or any(not isinstance(s, str) or not 1 <= len(s) <= 400 for s in value["findings"])):
+        raise Pause("Invalid report findings")
+    step = value["next_step"]
+    if (not isinstance(step, dict) or set(step) != {"owner", "action"}
+            or step["owner"] not in {"author", "maintainer", "none"}
+            or not isinstance(step["action"], str) or not 10 <= len(step["action"]) <= 600):
+        raise Pause("Invalid next step")
+    if value["state"] in {"needs-information", "needs-maintainer-decision", "blocked", "ready"} and step["owner"] == "none":
+        raise Pause("Actionable states must name who acts next")
+    if value["state"] in {"needs-maintainer-decision", "ready"} and step["owner"] != "maintainer":
+        raise Pause("Maintainer state requires a maintainer next step")
     if not isinstance(value["blockers"], list) or any(not isinstance(s, str) for s in value["blockers"]):
         raise Pause("Invalid blocker list")
     if not isinstance(value["scope_decisions"], list) or any(type(i) is not int for i in value["scope_decisions"]):

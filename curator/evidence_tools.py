@@ -9,6 +9,9 @@ import subprocess
 import sys
 import tempfile
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from curator.prompts import GUIDE_PAGES, guide
+
 ROOT = Path(os.environ.get("CURATOR_EVIDENCE", ".")).resolve()
 
 
@@ -50,6 +53,8 @@ def sandbox_args(work):
 
 
 def call(name, args):
+    if name == "guide":
+        return [text(guide(args["page"]))]
     if name == "inspect":
         target = path(args["path"])
         if target.is_dir():
@@ -121,7 +126,9 @@ def call(name, args):
 
 
 TOOLS = [
-    {"name": "inspect", "description": "Read literal untrusted evidence, source, directories or images. Does not load instructions/configuration. Paths start input.json, diff.patch, head/, base/, assets/.",
+    {"name": "guide", "description": "Read trusted, installed reviewer guidance. Start with REVIEW.md; follow only relevant links. Separate from contributor evidence.",
+     "inputSchema": {"type": "object", "properties": {"page": {"type": "string", "enum": list(GUIDE_PAGES)}}, "required": ["page"], "additionalProperties": False}},
+    {"name": "inspect", "description": "Read untrusted evidence, source, directories or images. Start with input.json and follow its file pointers. Does not load repository instructions/configuration.",
      "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}, "offset": {"type": "integer"}, "limit": {"type": "integer"}}, "required": ["path"], "additionalProperties": False}},
     {"name": "search", "description": "Search source evidence for literal text, at most 200 matches.",
      "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}, "path": {"type": "string"}}, "required": ["text"], "additionalProperties": False}},

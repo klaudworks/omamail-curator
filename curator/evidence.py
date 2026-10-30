@@ -122,6 +122,22 @@ def collect(snap, config, directory, checkpoints):
         except Exception as error:
             asset["unavailable"] = type(error).__name__ + ": " + str(error)[:200]
         context["assets"].append(asset)
+    # The initial read is an index, not the entire discussion/review/CI history.
+    for key in ("discussion", "ci", "previous", "assets"):
+        value = context[key]
+        if value is None:
+            continue
+        name = key + ".json"
+        files[name] = base64.b64encode(json.dumps(value, indent=2).encode()).decode()
+        context[key] = {"path": name}
+        if key in {"discussion", "assets"}:
+            context[key]["count"] = len(value)
+        elif key == "ci":
+            context[key].update(status="success" if pr else "not applicable", workflows=len(value),
+                                jobs=sum(len(run["jobs"]) for run in value))
+        else:
+            context[key].update(head=value.get("head"), state=value["assessment"]["state"],
+                                blockers=value["assessment"]["blockers"])
     files["input.json"] = base64.b64encode(json.dumps(context, indent=2).encode()).decode()
     files["source-executables.json"] = base64.b64encode(json.dumps(executables).encode()).decode()
     if sum(len(v) for v in files.values()) > 128 * 1024 * 1024:
