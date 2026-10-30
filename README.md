@@ -18,7 +18,7 @@ The initial deployment watches **`huacnlee/omamail` contributions opened by `kla
 
 The selected models are `openai/gpt-6-luna#xhigh` and `openai/gpt-6.1-sol#xhigh`, using native OpenCode ChatGPT login. No API-billed fallback is configured. Quota or authentication failures pause the sweep. There are no review-count, daily-budget or total model-duration caps. Network and diagnostic-tool deadlines still apply.
 
-The curator never closes/reopens, merges, formally approves, requests changes, changes draft status or repairs a contribution. Its labels are `needs-information`, `needs-maintainer-decision` and exact-SHA `review-ready`. Feature/disputed-behavior scope decisions remain with maintainers. See [the maintainer workflow policy](POLICY.md).
+The curator never closes/reopens, merges, formally approves, requests changes, changes draft status or repairs a contribution. Its labels are `needs-information`, `needs-maintainer-decision` and exact-SHA `review-ready`. Items labeled `deferred` wait for a maintainer to remove that label. Feature/disputed-behavior scope decisions remain with maintainers. See [the maintainer workflow policy](POLICY.md).
 
 ## Runtime
 

@@ -41,7 +41,7 @@ def collect(snap, config, directory, checkpoints):
         command(["git", "-c", "core.hooksPath=/dev/null", "--git-dir", str(repo), "fetch", "--depth=1", "https://github.com/" + config["repository"] + ".git", sha])
     if not pr:
         revisions = dict.fromkeys(revisions, command(["git", "--git-dir", str(repo), "rev-parse", "FETCH_HEAD"]).decode().strip())
-    files, omitted = {}, []
+    files, omitted, executables = {}, [], []
     for name, sha in revisions.items():
         archive = command(["git", "--git-dir", str(repo), "archive", sha])
         with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
@@ -51,6 +51,8 @@ def collect(snap, config, directory, checkpoints):
                         omitted.append(name + "/" + member.name)
                         continue
                     files[name + "/" + member.name] = base64.b64encode(tar.extractfile(member).read()).decode()
+                    if member.mode & 0o111:
+                        executables.append(name + "/" + member.name)
                 elif not member.isdir():
                     omitted.append(name + "/" + member.name + " (link/special file)")
     diff = command(["git", "--git-dir", str(repo), "diff", "--no-ext-diff", "--no-textconv", revisions["base"], revisions["head"]])
@@ -108,6 +110,7 @@ def collect(snap, config, directory, checkpoints):
             asset["unavailable"] = type(error).__name__ + ": " + str(error)[:200]
         context["assets"].append(asset)
     files["input.json"] = base64.b64encode(json.dumps(context, indent=2).encode()).decode()
+    files["source-executables.json"] = base64.b64encode(json.dumps(executables).encode()).decode()
     if sum(len(v) for v in files.values()) > 128 * 1024 * 1024:
         raise Pause("Evidence package exceeds bounded ingestion limit")
     return files

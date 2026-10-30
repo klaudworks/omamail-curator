@@ -5,6 +5,8 @@ from .policy import Stop, eligible, successful_runs
 def snapshot(api, config, checkpoints, number):
     item = api.get(f"/issues/{number}")
     eligible(item, config)
+    if any(label["name"] == "deferred" for label in item["labels"]):
+        raise Stop("deferred; a maintainer must remove the deferred label to resume")
     pr, receipt = None, []
     if "pull_request" in item:
         pr = api.get(f"/pulls/{number}")

@@ -30,12 +30,22 @@ def sandbox_args(work):
             "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
             "--tmpfs", "/home", "--dir", "/home/reviewer", "--dir", "/etc",
             "--bind", str(work), "/work", "--chdir", "/work", "--clearenv",
-            "--setenv", "PATH", "/usr/bin:/bin", "--setenv", "HOME", "/home/reviewer",
+            "--setenv", "PATH", "/opt/curator-node/bin:/opt/curator-toolchain/bin:/usr/lib/qt6/bin:/usr/bin:/bin", "--setenv", "HOME", "/home/reviewer",
             "--setenv", "LANG", "C.UTF-8", "--setenv", "QT_QPA_PLATFORM", "offscreen",
             "--setenv", "QT_QUICK_BACKEND", "software"]
     for file in ("/etc/fonts", "/etc/ssl/certs", "/etc/ld.so.cache"):
         if Path(file).exists():
             args += ["--ro-bind", file, file]
+    provisioned = Path.home() / ".local/share/omamail-curator/toolchain"
+    node = Path.home() / ".local/share/mise/installs/node/26.12.0"
+    if node.is_dir():
+        args += ["--ro-bind", str(node), "/opt/curator-node"]
+    if provisioned.is_dir():
+        args += ["--ro-bind", str(provisioned), "/opt/curator-toolchain"]
+        registry = provisioned / "cargo-registry"
+        if registry.is_dir():
+            args += ["--dir", "/home/reviewer/.cargo", "--ro-bind", str(registry), "/home/reviewer/.cargo/registry",
+                     "--setenv", "CARGO_HOME", "/home/reviewer/.cargo", "--setenv", "CARGO_NET_OFFLINE", "true"]
     return args
 
 

@@ -27,9 +27,9 @@ def model(config, files, phase, logdir, luna=None):
     if p.returncode or not response.get("ok"):
         raise Pause("Guest/model error: " + response.get("error", "transport failed")[:2000])
     expected = "openai/gpt-6-luna#xhigh" if phase == "completeness" else "openai/gpt-6.1-sol#xhigh"
-    if response.get("model") != expected or not response.get("session", "").startswith("ses_"):
+    if response.get("model") != expected or not response.get("session", "").startswith("ses_") or response.get("verified_tools") is not True:
         raise Pause("Invalid model/session identity")
-    return assessment(response["assessment"], phase), {"model": expected, "session": response["session"]}
+    return assessment(response["assessment"], phase), {"model": expected, "session": response["session"], "verified_tools": True}
 
 
 def process(api, config, checkpoints, number, dry_run=False, gate_only=False):
@@ -47,7 +47,7 @@ def process(api, config, checkpoints, number, dry_run=False, gate_only=False):
         raise
     if gate_only:
         return {"number": number, "gate": "eligible", "ci": snap["ci"], "models_started": 0}
-    if snap["previous"] and snap["previous"]["fingerprint"] == snap["fingerprint"]:
+    if snap["previous"] and snap["previous"].get("contract_version") == 2 and snap["previous"]["fingerprint"] == snap["fingerprint"]:
         previous = snap["previous"]
         if dry_run:
             return {"number": number, "state": "unchanged", "models_started": 0}

@@ -21,6 +21,10 @@ class Publisher:
 
     def publish(self, snap, result, phase, sessions):
         assessment(result, phase)
+        expected = ["openai/gpt-6-luna#xhigh"] + (["openai/gpt-6.1-sol#xhigh"] if phase == "final" else [])
+        if ([s.get("model") for s in sessions] != expected or any(s.get("verified_tools") is not True for s in sessions)
+                or len({s.get("session") for s in sessions}) != len(expected)):
+            raise Stop("Publication requires verified selected-model sessions and evidence tools")
         validate_scope(result, snap, self.config, self.checkpoints)
         current = self.fresh(snap)
         n = snap["item"]["number"]
@@ -36,7 +40,7 @@ class Publisher:
                   + (f"\n\nReviewed head: `{sha}`." if sha else "")
                   + "\n\n" + "\n".join(f"- CI: [{c['path']}]({c['url']}) (attempt {c['attempt']})" for c in snap["ci"])
                   + "\n\nAutomated by [omamail-curator](https://github.com/klaudworks/omamail-curator) using the operator's ChatGPT subscription. Maintainers decide disposition.")
-        payload = {"type": "status", "repository": self.config["repository"], "number": n,
+        payload = {"type": "status", "contract_version": 2, "repository": self.config["repository"], "number": n,
                    "fingerprint": snap["fingerprint"], "head": sha, "base": snap["pr"]["base"]["sha"] if snap["pr"] else None,
                    "phase": phase, "assessment": result, "sessions": sessions,
                    "criteria_changed": criteria_changed, "report_hash": digest(report)}
@@ -62,7 +66,7 @@ class Publisher:
         if result["state"] == "ready":
             wanted = {"review-ready"}
         elif result["state"] == "blocked":
-            wanted = {"needs-information"}
+            wanted = {"needs-maintainer-decision" if result["malicious"] or result["security"] == "BLOCK" else "needs-information"}
         current = self.fresh(snap)
         actual = {l["name"] for l in current["item"]["labels"]}
         for label in sorted((actual & LABELS) - wanted):

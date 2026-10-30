@@ -27,6 +27,8 @@ JOBS = [{"id": 201, "name": "Linux", "status": "completed", "conclusion": "succe
         {"id": 202, "name": "Mac", "status": "completed", "conclusion": "success"}]
 RESULT = {"kind": "bug", "state": "needs-information", "body": "This fixes selection for calendar users. Please supply the missing hands-on check.",
           "security": "NOT VERIFIED", "blockers": ["hands-on check"], "scope_decisions": [], "malicious": False}
+LUNA = [{"model": "openai/gpt-6-luna#xhigh", "session": "ses_luna", "verified_tools": True}]
+FINAL = LUNA + [{"model": "openai/gpt-6.1-sol#xhigh", "session": "ses_sol", "verified_tools": True}]
 
 
 class API:
@@ -137,33 +139,39 @@ class Contract(unittest.TestCase):
         del self.api.item["pull_request"]
         self.assertIsNone(self.snap()["pr"])
 
+    def test_deferred_items_stop_before_model(self):
+        self.api.item["labels"] = [{"name": "deferred"}]
+        with self.assertRaises(Stop):
+            self.snap()
+        self.assertFalse(self.api.effects)
+
     def test_stale_publication_has_no_effect(self):
         snap = self.snap()
         self.api.pr["head"]["sha"] = "d" * 40
         with self.assertRaises(Stop):
-            self.publisher.publish(snap, RESULT, "completeness", [])
+            self.publisher.publish(snap, RESULT, "completeness", LUNA)
         self.assertFalse(self.api.effects)
 
     def test_author_rechecked_before_publish(self):
         snap = self.snap()
         self.api.item["user"]["login"] = "other"
         with self.assertRaises(Stop):
-            self.publisher.publish(snap, RESULT, "completeness", [])
+            self.publisher.publish(snap, RESULT, "completeness", LUNA)
         self.assertFalse(self.api.effects)
 
     def test_lost_comment_response_recovers_without_duplicate(self):
         snap = self.snap()
         self.api.fail_after_comment = True
         with self.assertRaises(Pause):
-            self.publisher.publish(snap, RESULT, "completeness", [])
-        self.publisher.publish(self.snap(), RESULT, "completeness", [])
+            self.publisher.publish(snap, RESULT, "completeness", LUNA)
+        self.publisher.publish(self.snap(), RESULT, "completeness", LUNA)
         self.assertEqual(len(self.api.comments), 1)
         self.assertEqual([l["name"] for l in self.api.item["labels"]], ["needs-information"])
 
     def test_ready_is_comment_only_and_idempotent(self):
         result = {**RESULT, "state": "ready", "security": "PASS", "blockers": []}
-        self.publisher.publish(self.snap(), result, "final", [])
-        self.publisher.publish(self.snap(), result, "final", [])
+        self.publisher.publish(self.snap(), result, "final", FINAL)
+        self.publisher.publish(self.snap(), result, "final", FINAL)
         self.assertEqual(len(self.api.comments), 1)
         self.assertEqual(len(self.api.reviews), 1)
         self.assertEqual(self.api.reviews[0]["event"], "COMMENT")
@@ -171,13 +179,13 @@ class Contract(unittest.TestCase):
 
     def test_signed_automation_not_human_input(self):
         before = self.snap()["fingerprint"]
-        self.publisher.publish(self.snap(), RESULT, "completeness", [])
+        self.publisher.publish(self.snap(), RESULT, "completeness", LUNA)
         self.assertEqual(self.snap()["fingerprint"], before)
         self.api.comments.append({"id": 9999, "body": "I tested this by hand", "user": ITEM["user"]})
         self.assertNotEqual(self.snap()["fingerprint"], before)
 
     def test_forged_checkpoint_not_accepted(self):
-        self.publisher.publish(self.snap(), RESULT, "completeness", [])
+        self.publisher.publish(self.snap(), RESULT, "completeness", LUNA)
         self.api.comments[0]["body"] = self.api.comments[0]["body"].replace("v1:", "v1:x", 1)
         self.assertIsNone(self.snap()["previous"])
 
@@ -211,7 +219,7 @@ class Contract(unittest.TestCase):
         self.assertEqual(self.api.effects, [("DELETE", "/issues/7/labels/review-ready", None)])
 
     def test_incomplete_pr_never_starts_final_review(self):
-        with tempfile.TemporaryDirectory() as temp, patch("curator.controller.collect", return_value={}), patch("curator.controller.model", return_value=(RESULT, {"session": "ses_luna"})) as model:
+        with tempfile.TemporaryDirectory() as temp, patch("curator.controller.collect", return_value={}), patch("curator.controller.model", return_value=(RESULT, LUNA[0])) as model:
             result = process(self.api, {**CONFIG, "state_dir": temp}, self.cp, 7)
             self.assertEqual(result["state"], "needs-information")
             self.assertEqual(model.call_count, 1)
@@ -223,11 +231,17 @@ class Contract(unittest.TestCase):
         self.assertFalse(self.api.effects)
 
     def test_unchanged_input_reuses_checkpoint(self):
-        self.publisher.publish(self.snap(), RESULT, "completeness", [])
+        self.publisher.publish(self.snap(), RESULT, "completeness", LUNA)
         with patch("curator.controller.model") as model:
             result = process(self.api, CONFIG, self.cp, 7)
             model.assert_not_called()
         self.assertTrue(result["reused"])
+
+    def test_toolless_or_wrong_model_cannot_publish(self):
+        for sessions in [[], [{**LUNA[0], "verified_tools": False}], [{**LUNA[0], "model": "other/model"}]]:
+            with self.assertRaises(Stop):
+                self.publisher.publish(self.snap(), RESULT, "completeness", sessions)
+        self.assertFalse(self.api.effects)
 
 
 if __name__ == "__main__":
