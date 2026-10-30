@@ -1,6 +1,6 @@
 # Omamail curator
 
-Helps maintainers understand issues and review pull requests. It checks what's missing, investigates relevant evidence, and leaves a short comment with the next useful action.
+Helps maintainers of [Omamail](https://github.com/huacnlee/omamail) understand issues and review pull requests. It checks what's missing, investigates relevant evidence, and leaves a short comment with the next useful action.
 
 Every update uses the same format: **Status · Summary · Findings · Next step**, naming who should act and what they should do. Completeness requests and final reviews are labeled explicitly.
 
