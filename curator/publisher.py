@@ -1,4 +1,4 @@
-from .policy import Stop, LABELS, assessment, eligible, digest
+from .policy import CONTRACT_VERSION, Stop, LABELS, assessment, eligible, digest
 from .snapshot import snapshot, validate_scope
 
 
@@ -35,12 +35,19 @@ class Publisher:
         criteria_changed = snap.get("criteria_changed", (snap.get("previous") or {}).get("criteria_changed", False))
         if criteria_changed:
             warning = "\n\n**⚠️ THIS PR CHANGES THE RULES USED TO REVIEW IT**\nReview proposed criteria separately; execution and publication authority remain the curator policy."
-        report = ("## Omamail curator — automated assessment\n\n" + result["body"] + warning
-                  + f"\n\n**State:** {result['state']} · **Security: {result['security']}**"
-                  + (f"\n\nReviewed head: `{sha}`." if sha else "")
-                  + "\n\n" + "\n".join(f"- CI: [{c['path']}]({c['url']}) (attempt {c['attempt']})" for c in snap["ci"])
-                  + "\n\nAutomated by [omamail-curator](https://github.com/klaudworks/omamail-curator) using the operator's ChatGPT subscription. Maintainers decide disposition.")
-        payload = {"type": "status", "contract_version": 2, "repository": self.config["repository"], "number": n,
+        titles = {"continue": "Review in progress", "needs-information": "A check is still needed",
+                  "needs-maintainer-decision": "A product decision is needed", "blocked": "An issue needs attention",
+                  "ready": "Ready for maintainer review", "handoff": "Ready for next steps",
+                  "support": "Suggested next step", "verified-fixed": "The fix is verified"}
+        checks = " · ".join(f"[CI {i + 1}]({c['url']})" for i, c in enumerate(snap["ci"]))
+        receipt = (f"[Commit {sha[:7]}](https://github.com/{self.config['repository']}/commit/{sha})" if sha else "")
+        if checks:
+            receipt += " · Checks passed: " + checks
+        report = ("## " + titles[result["state"]] + "\n\n" + result["body"] + warning
+                  + f"\n\n**Security: {result['security']}**"
+                  + (" · " + receipt if receipt else "")
+                  + "\n\n_Automated by [omamail-curator](https://github.com/klaudworks/omamail-curator)._")
+        payload = {"type": "status", "contract_version": CONTRACT_VERSION, "repository": self.config["repository"], "number": n,
                    "fingerprint": snap["fingerprint"], "head": sha, "base": snap["pr"]["base"]["sha"] if snap["pr"] else None,
                    "phase": phase, "assessment": result, "sessions": sessions,
                    "criteria_changed": criteria_changed, "report_hash": digest(report)}

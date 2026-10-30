@@ -67,17 +67,20 @@ def successful_runs(pr, workflows, config):
 
 STATES = {"continue", "needs-information", "needs-maintainer-decision", "blocked", "ready", "handoff", "support", "verified-fixed"}
 LABELS = {"needs-information", "needs-maintainer-decision", "review-ready"}
+CONTRACT_VERSION = 3
 
 
 def assessment(value, phase):
-    required = {"kind", "state", "body", "security", "blockers", "scope_decisions", "malicious"}
+    required = {"kind", "scope", "state", "body", "security", "blockers", "scope_decisions", "malicious"}
     if not isinstance(value, dict) or set(value) != required:
         raise Pause("Invalid model output fields")
     if value["kind"] not in {"bug", "feature", "disputed", "support"} or value["state"] not in STATES:
         raise Pause("Invalid model decision")
+    if value["scope"] not in {"routine", "fundamental", "uncertain"}:
+        raise Pause("Invalid product-scope assessment")
     if value["security"] not in {"PASS", "BLOCK", "NOT VERIFIED"} or type(value["malicious"]) is not bool:
         raise Pause("Invalid security decision")
-    if not isinstance(value["body"], str) or not 20 <= len(value["body"]) <= 16000:
+    if not isinstance(value["body"], str) or not 20 <= len(value["body"]) <= 2400:
         raise Pause("Invalid report body")
     if not isinstance(value["blockers"], list) or any(not isinstance(s, str) for s in value["blockers"]):
         raise Pause("Invalid blocker list")

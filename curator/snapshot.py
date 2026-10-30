@@ -66,9 +66,10 @@ def snapshot(api, config, checkpoints, number):
 
 
 def validate_scope(result, snap, config, checkpoints):
-    if result["kind"] not in {"feature", "disputed"} or result["state"] not in {"continue", "ready"}:
+    if result["state"] not in {"continue", "ready", "handoff", "needs-information", "needs-maintainer-decision"}:
         return
-    # Explicit same-revision decisions are deterministic; conflicting decisions block.
+    # Routine refinements have standing scope acceptance. Explicit human
+    # objections still take precedence, regardless of the model's classification.
     head = snap["pr"]["head"]["sha"] if snap["pr"] else "issue"
     previous = snap.get("previous") or {}
     previous_decisions = set(previous.get("assessment", {}).get("scope_decisions", []))
@@ -87,6 +88,12 @@ def validate_scope(result, snap, config, checkpoints):
             rejected.add(e["id"])
         if previous.get("head") and f"/curator scope reject {previous['head']}" in lines:
             rejected.add(e["id"])
-    if rejected or not accepted or not set(result["scope_decisions"]) & accepted:
-        result.update(state="needs-maintainer-decision", blockers=["Explicit, unconflicted maintainer scope acceptance is required."])
-        result["body"] += f"\n\nScope gate: @klaudworks or @huacnlee must record `/curator scope accept {head}` after resolving any conflicting scope decision."
+    needs_acceptance = result["scope"] != "routine" and not set(result["scope_decisions"]) & accepted
+    if rejected or needs_acceptance:
+        blocker = ("A maintainer has objected to this direction; resolve that objection first." if rejected else
+                   "A maintainer needs to confirm this change to the product's direction.")
+        if result["state"] != "needs-maintainer-decision":
+            result["body"] += "\n\n" + blocker
+        result["state"] = "needs-maintainer-decision"
+        if blocker not in result["blockers"]:
+            result["blockers"] = [*result["blockers"], blocker]

@@ -9,7 +9,7 @@ import tempfile
 import time
 from .evidence import collect
 from .github import GitHub
-from .policy import Pause, Stop, assessment, eligible
+from .policy import CONTRACT_VERSION, Pause, Stop, assessment, eligible
 from .publisher import Publisher
 from .snapshot import snapshot, validate_scope
 from .state import Checkpoints
@@ -47,7 +47,7 @@ def process(api, config, checkpoints, number, dry_run=False, gate_only=False):
         raise
     if gate_only:
         return {"number": number, "gate": "eligible", "ci": snap["ci"], "models_started": 0}
-    if snap["previous"] and snap["previous"].get("contract_version") == 2 and snap["previous"]["fingerprint"] == snap["fingerprint"]:
+    if snap["previous"] and snap["previous"].get("contract_version") == CONTRACT_VERSION and snap["previous"]["fingerprint"] == snap["fingerprint"]:
         previous = snap["previous"]
         if dry_run:
             return {"number": number, "state": "unchanged", "models_started": 0}

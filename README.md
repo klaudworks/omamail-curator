@@ -18,7 +18,9 @@ The initial deployment watches **`huacnlee/omamail` contributions opened by `kla
 
 The selected models are `openai/gpt-6-luna#xhigh` and `openai/gpt-6.1-sol#xhigh`, using native OpenCode ChatGPT login. No API-billed fallback is configured. Quota or authentication failures pause the sweep. There are no review-count, daily-budget or total model-duration caps. Network and diagnostic-tool deadlines still apply.
 
-The curator never closes/reopens, merges, formally approves, requests changes, changes draft status or repairs a contribution. Its labels are `needs-information`, `needs-maintainer-decision` and exact-SHA `review-ready`. Items labeled `deferred` wait for a maintainer to remove that label. Feature/disputed-behavior scope decisions remain with maintainers. See [the maintainer workflow policy](POLICY.md).
+The curator never closes/reopens, merges, formally approves, requests changes, changes draft status or repairs a contribution. Its labels are `needs-information`, `needs-maintainer-decision` and exact-SHA `review-ready`. Items labeled `deferred` wait for a maintainer to remove that label. Routine fixes and small refinements to existing workflows have standing scope acceptance, including selection/copy and minor UI tradeoffs. Only fundamental product-direction changes or explicit maintainer objections require a separate decision. Technical and verification requirements still apply. See [the maintainer workflow policy](POLICY.md).
+
+Comments explain the outcome and next action in plain language, usually 80–140 words. Detailed investigation stays in private logs; a compact footer links to the reviewed commit and CI.
 
 ## Runtime
 
@@ -75,5 +77,7 @@ systemctl --user stop omamail-curator.service
 Renew an expired GitHub token by atomically replacing its private file. Refresh ChatGPT authentication inside the guest; never substitute an API key. Retain `checkpoint.key` across controller updates and ordinary reboots. A destructive VM reset discards guest authentication and needs reprovisioning; the bridge never performs that reset. GitHub/API/model errors leave the service failed for inspection and retry at the next tick. Private `runs/` logs can be removed while no sweep is active; they are not workflow state.
 
 Signed automation comments are excluded from human decisions. Relevant human edits/replies change the input fingerprint. Unchanged blockers do not cause repeated model work. If a comment/review write succeeds but its response is lost, the next run discovers the signed effect and completes publication without another model call. GitHub has no atomic “check inputs and comment” transaction; the publisher checks before each effect and after completion, removing stale readiness if inputs changed.
+
+Deleting the current status comment removes its saved assessment, so the next eligible sweep reassesses the item. Old policy-version checkpoints are also reassessed once, even if the contribution has not changed. Author and current-CI prerequisites still apply.
 
 Read [AGENTS.md](AGENTS.md) and [CONTRIBUTING.md](CONTRIBUTING.md) before modifying the implementation.

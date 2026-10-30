@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from curator.policy import Pause, Stop, assessment, eligible, successful_runs
+from curator.policy import CONTRACT_VERSION, Pause, Stop, assessment, eligible, successful_runs
 from curator.publisher import Publisher
 from curator.snapshot import snapshot, validate_scope
 from curator.state import Checkpoints
@@ -26,7 +26,7 @@ RUN = {"id": 101, "workflow_id": 11, "event": "pull_request", "head_sha": SHA, "
 JOBS = [{"id": 201, "name": "Linux", "status": "completed", "conclusion": "success"},
         {"id": 202, "name": "Mac", "status": "completed", "conclusion": "success"}]
 RESULT = {"kind": "bug", "state": "needs-information", "body": "This fixes selection for calendar users. Please supply the missing hands-on check.",
-          "security": "NOT VERIFIED", "blockers": ["hands-on check"], "scope_decisions": [], "malicious": False}
+          "scope": "routine", "security": "NOT VERIFIED", "blockers": ["hands-on check"], "scope_decisions": [], "malicious": False}
 LUNA = [{"model": "openai/gpt-6-luna#xhigh", "session": "ses_luna", "verified_tools": True}]
 FINAL = LUNA + [{"model": "openai/gpt-6.1-sol#xhigh", "session": "ses_sol", "verified_tools": True}]
 
@@ -197,7 +197,7 @@ class Contract(unittest.TestCase):
             assessment({**RESULT, "target": "another/repo"}, "completeness")
 
     def test_feature_scope_and_conflicting_decisions(self):
-        result = {**RESULT, "kind": "feature", "state": "continue", "blockers": [], "scope_decisions": [99]}
+        result = {**RESULT, "kind": "feature", "scope": "fundamental", "state": "continue", "blockers": [], "scope_decisions": [99]}
         snap = self.snap()
         validate_scope(result, snap, CONFIG, self.cp)
         self.assertEqual(result["state"], "needs-maintainer-decision")
@@ -223,7 +223,7 @@ class Contract(unittest.TestCase):
         old = "c" * 40
         snap["previous"] = {"head": old, "assessment": {"scope_decisions": [99]}}
         snap["events"].append({"id": 99, "body": "/curator scope accept " + old, "user": ITEM["user"]})
-        result = {**RESULT, "kind": "feature", "state": "continue", "blockers": [], "scope_decisions": [99]}
+        result = {**RESULT, "kind": "feature", "scope": "fundamental", "state": "continue", "blockers": [], "scope_decisions": [99]}
         validate_scope(result, snap, CONFIG, self.cp)
         self.assertEqual(result["state"], "continue")
         result["scope_decisions"] = []
@@ -254,6 +254,71 @@ class Contract(unittest.TestCase):
             with self.assertRaises(Stop):
                 self.publisher.publish(self.snap(), RESULT, "completeness", sessions)
         self.assertFalse(self.api.effects)
+
+    def test_routine_refinements_do_not_need_scope_approval(self):
+        for kind in ("bug", "feature", "disputed"):
+            for state in ("continue", "ready", "handoff"):
+                with self.subTest(kind=kind, state=state):
+                    result = {**RESULT, "kind": kind, "state": state, "blockers": []}
+                    validate_scope(result, self.snap(), CONFIG, self.cp)
+                    self.assertEqual(result["state"], state)
+                    self.assertEqual(result["blockers"], [])
+
+    def test_fundamental_and_unclear_scope_cannot_be_marked_ready(self):
+        for scope in ("fundamental", "uncertain"):
+            result = {**RESULT, "scope": scope, "state": "ready", "security": "PASS", "blockers": []}
+            self.publisher.publish(self.snap(), result, "final", FINAL)
+            self.assertEqual(result["state"], "needs-maintainer-decision")
+            self.assertNotIn({"name": "review-ready"}, self.api.item["labels"])
+        self.assertTrue(all(r["event"] == "COMMENT" for r in self.api.reviews))
+
+    def test_routine_refinement_can_be_review_ready_without_scope_comment(self):
+        result = {**RESULT, "kind": "disputed", "state": "ready", "security": "PASS", "blockers": []}
+        self.publisher.publish(self.snap(), result, "final", FINAL)
+        self.assertEqual(self.api.item["labels"], [{"name": "review-ready"}])
+        self.assertEqual(self.api.reviews[0]["event"], "COMMENT")
+
+    def test_explicit_objection_still_blocks_routine_changes(self):
+        snap = self.snap()
+        snap["events"].append({"id": 99, "body": "/curator scope reject " + SHA, "user": {"login": "huacnlee"}})
+        result = {**RESULT, "state": "continue", "blockers": []}
+        validate_scope(result, snap, CONFIG, self.cp)
+        self.assertEqual(result["state"], "needs-maintainer-decision")
+        self.assertIn("objected", result["blockers"][0])
+
+    def test_scope_gate_preserves_independent_verification_gaps(self):
+        result = {**RESULT, "scope": "fundamental"}
+        validate_scope(result, self.snap(), CONFIG, self.cp)
+        self.assertEqual(result["state"], "needs-maintainer-decision")
+        self.assertIn("hands-on check", result["blockers"])
+
+    def test_unknown_scope_and_overlong_comments_fail_closed(self):
+        for result in [{**RESULT, "scope": "probably-small"}, {**RESULT, "body": "x" * 2401},
+                       {k: v for k, v in RESULT.items() if k != "scope"}]:
+            with self.assertRaises(Pause):
+                self.publisher.publish(self.snap(), result, "completeness", LUNA)
+        self.assertFalse(self.api.effects)
+
+    def test_old_policy_checkpoint_is_reassessed_without_new_item_changes(self):
+        self.publisher.publish(self.snap(), RESULT, "completeness", LUNA)
+        comment = self.api.comments[0]
+        old = self.cp.decode(comment, 7, "status")
+        old["contract_version"] = CONTRACT_VERSION - 1
+        visible = comment["body"].split("\n\n<!--", 1)[0]
+        comment["body"] = visible + "\n\n" + self.cp.encode(old)
+        with tempfile.TemporaryDirectory() as temp, patch("curator.controller.collect", return_value={}), patch("curator.controller.model", return_value=(RESULT, LUNA[0])) as model:
+            process(self.api, {**CONFIG, "state_dir": temp}, self.cp, 7)
+            model.assert_called_once()
+        self.assertEqual(len(self.api.comments), 1)
+        self.assertEqual(self.cp.decode(self.api.comments[0], 7)["contract_version"], CONTRACT_VERSION)
+
+    def test_deleting_status_comment_triggers_reassessment(self):
+        self.publisher.publish(self.snap(), RESULT, "completeness", LUNA)
+        self.api.comments.clear()
+        with tempfile.TemporaryDirectory() as temp, patch("curator.controller.collect", return_value={}), patch("curator.controller.model", return_value=(RESULT, LUNA[0])) as model:
+            process(self.api, {**CONFIG, "state_dir": temp}, self.cp, 7)
+            model.assert_called_once()
+        self.assertEqual(len(self.api.comments), 1)
 
 
 if __name__ == "__main__":
