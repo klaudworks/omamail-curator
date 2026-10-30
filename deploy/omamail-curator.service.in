@@ -1,0 +1,13 @@
+[Unit]
+Description=Omamail contribution curator sweep
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=@CHECKOUT@
+ExecStart=/usr/bin/python3 -m curator.controller --config @CONFIG@
+TimeoutStartSec=infinity
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes

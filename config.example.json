@@ -1,0 +1,19 @@
+{
+  "repository": "huacnlee/omamail",
+  "authors": ["klaudworks"],
+  "maintainers": ["klaudworks", "huacnlee"],
+  "publisher_login": "klaudworks",
+  "token_file": "/absolute/private/path/github.token",
+  "state_dir": "/absolute/private/path/curator-state",
+  "transport": ["/absolute/path/to/guest-transport"],
+  "pipelines": [
+    {"path": ".github/workflows/ci.yml", "jobs": [
+      "Standalone backend \\(ubuntu-latest\\)", "Standalone backend \\(macos-latest\\)", "Standalone backend \\(windows-latest\\)",
+      "Standalone app \\(macOS arm64\\)", "Standalone app \\(Linux x86_64, glibc 2.35\\)", "Standalone app \\(Windows x86_64\\)",
+      "Portable tests", "Unreleased API gate", "Released backend gate \\(x86_64\\)", "Released backend gate \\(aarch64\\)", "Published backend merge gate"
+    ]},
+    {"path": ".github/workflows/native-credentials.yml", "jobs": [
+      "Native credentials \\(ubuntu-[0-9.]+\\)", "Native credentials \\(macos-[0-9]+\\)", "Native credentials \\(windows-[0-9]+\\)"
+    ]}
+  ]
+}

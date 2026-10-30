@@ -1,0 +1,11 @@
+[Unit]
+Description=Review eligible Omamail contributions every 30 minutes
+
+[Timer]
+OnCalendar=*:0/30
+Persistent=true
+AccuracySec=30s
+Unit=omamail-curator.service
+
+[Install]
+WantedBy=timers.target
