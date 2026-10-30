@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from curator.prompts import SYSTEM, GUIDE_PAGES, guide, stage_prompt
 from curator.policy import assessment
+from curator.evidence_tools import server_args
 
 MODELS = {"completeness": "openai/gpt-6-luna#xhigh", "final": "openai/gpt-6.1-sol#xhigh"}
 
@@ -54,6 +55,8 @@ def main():
         workspace = Path(temp)
         evidence = workspace / "evidence"
         evidence.mkdir()
+        tool_work = workspace / "tool-work"
+        tool_work.mkdir()
         total = 0
         for name, encoded in request["files"].items():
             target = (evidence / name).resolve()
@@ -79,8 +82,8 @@ def main():
                "policies": [{"action": "provider.use", "resource": "*", "effect": "deny"},
                             {"action": "provider.use", "resource": "openai", "effect": "allow"}],
                 "agents": {"curator": {"mode": "primary", "system": SYSTEM, "permissions": rules}},
-               "mcp": {"servers": {"curator": {"type": "local", "command": ["/usr/bin/python3", str(ROOT / "curator/evidence_tools.py")],
-                    "environment": {"CURATOR_EVIDENCE": str(evidence)}, "codemode": False}}}}
+                "mcp": {"servers": {"curator": {"type": "local", "command": server_args(evidence, tool_work),
+                     "codemode": False}}}}
         (workspace / "opencode.json").write_text(json.dumps(cfg))
         for page in GUIDE_PAGES:
             guide(page)  # Fail before inference if deployment omitted a linked guide.

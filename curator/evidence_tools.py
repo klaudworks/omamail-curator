@@ -39,8 +39,12 @@ def sandbox_args(work):
     for file in ("/etc/fonts", "/etc/ssl/certs", "/etc/ld.so.cache"):
         if Path(file).exists():
             args += ["--ro-bind", file, file]
-    provisioned = Path.home() / ".local/share/omamail-curator/toolchain"
-    node = Path.home() / ".local/share/mise/installs/node/26.12.0"
+    provisioned = Path("/opt/curator-toolchain")
+    if not provisioned.is_dir():
+        provisioned = Path.home() / ".local/share/omamail-curator/toolchain"
+    node = Path("/opt/curator-node")
+    if not node.is_dir():
+        node = Path.home() / ".local/share/mise/installs/node/26.12.0"
     if node.is_dir():
         args += ["--ro-bind", str(node), "/opt/curator-node"]
     if provisioned.is_dir():
@@ -52,11 +56,41 @@ def sandbox_args(work):
     return args
 
 
+def server_args(evidence, work):
+    return ["/usr/bin/python3", str(Path(__file__).resolve()), "--sandbox-server", str(evidence), str(work)]
+
+
+def server_sandbox_args(evidence, work):
+    """The entire tool server sees only public runtime files and assigned evidence."""
+    runtime = Path(__file__).resolve().parent.parent
+    return sandbox_args(work) + [
+        "--ro-bind", str(runtime / "curator"), "/opt/curator/curator",
+        "--ro-bind", str(runtime / "prompts"), "/opt/curator/prompts",
+        "--ro-bind", str(evidence), "/evidence",
+        "--setenv", "CURATOR_EVIDENCE", "/evidence",
+        "--", "/usr/bin/python3", "/opt/curator/curator/evidence_tools.py"]
+
+
+def exec_sandbox(args):
+    # Hidden paths do not revoke an inherited file handle. Also clear the
+    # sandbox init's environment, not just the tool child's environment.
+    for name in os.listdir("/proc/self/fd"):
+        fd = int(name)
+        if fd > 2:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+    os.execve(args[0], args, {})
+
+
 def call(name, args):
     if name == "guide":
         return [text(guide(args["page"]))]
     if name == "inspect":
         target = path(args["path"])
+        if not target.exists():
+            return [text({"path": args["path"], "exists": False})]
         if target.is_dir():
             return [text("\n".join(sorted(p.name + ("/" if p.is_dir() else "") for p in target.iterdir())))]
         if target.suffix.lower() in {".png", ".jpg", ".jpeg"}:
@@ -166,4 +200,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1:
+        if len(sys.argv) != 4 or sys.argv[1] != "--sandbox-server":
+            raise SystemExit("Invalid tool server invocation")
+        exec_sandbox(server_sandbox_args(Path(sys.argv[2]).resolve(), Path(sys.argv[3]).resolve()))
+    else:
+        main()

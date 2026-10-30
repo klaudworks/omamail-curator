@@ -12,5 +12,5 @@ This file guides coding agents working on the curator. Runtime reviewers start a
 | --- | --- |
 | Review behavior, decisions or wording | [Runtime index](prompts/REVIEW.md), then the linked topic |
 | Eligibility, recovery or publication | [POLICY.md](POLICY.md), `curator/controller.py`, `curator/snapshot.py`, `curator/publisher.py` |
-| Evidence and tool boundaries | `curator/evidence.py`, `curator/evidence_tools.py`, `curator/guest.py` |
+| Evidence and tool boundaries | [Isolation](deploy/ISOLATION.md), `curator/evidence.py`, `curator/evidence_tools.py`, `curator/guest.py` |
 | Deployment and operations | [README.md](README.md), `deploy/` |

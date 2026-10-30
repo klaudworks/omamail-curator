@@ -11,7 +11,7 @@ Inspect existing coverage and use targeted investigation before asking for more.
 Use the evidence index in `input.json`. Open details only for the question being decided:
 
 - Discussion: intent, objections, new proof and resolved findings.
-- Previous assessment and `delta.patch`: which claims changed; reassess the full diff if the delta is unavailable.
+- Previous assessment and `delta.patch`: which claims changed; open the delta only when the index lists it. Same-head reassessments may have no delta. Reassess the full diff when needed.
 - CI: controller-verified current-head workflow/job receipts. Do not ask to repeat already-successful pipelines.
 - Source and tests: inspect changed behavior and relevant callers/contracts before running diagnostics. Read domain guidance linked from baseline `AGENTS.md` as needed.
 - Attachments: inspect only relevant media; [UI.md](UI.md) explains their limits.
