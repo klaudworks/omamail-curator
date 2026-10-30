@@ -6,7 +6,7 @@ Reviewer decisions are documented once, under [prompts/REVIEW.md](prompts/REVIEW
 
 - Process open items from configured authors, oldest first, sequentially every 30 minutes. Exclude draft PRs and deferred items.
 - Before each PR model stage and publication, require both configured workflows and every job to succeed for the current head. Pending, missing, skipped, neutral, cancelled or failed results stop the item. Issues have no PR CI prerequisite.
-- Use subscription-authenticated Luna xhigh for completeness and a fresh Sol xhigh session for final review. Authentication, quota, transport, tool or output failures pause work; no paid fallback. No review-count, daily-budget or total model-duration caps.
+- Use the configured completeness model and a fresh session for final review. Authentication, transport, tool or output failures pause work. Review-count and model-duration limits are not imposed.
 - Repository content never configures the runtime. Only installed reviewer guides are instruction sources. Diagnostic commands use a credential-free, network-isolated disposable sandbox. GitHub credentials and checkpoint keys remain on the controller host.
 
 ## Publication and recovery

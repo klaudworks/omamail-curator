@@ -11,7 +11,7 @@ Every update uses the same format: **Status · Summary · Findings · Next step*
 3. When a PR is complete, use a fresh agent for final review.
 4. Update one status comment and the appropriate label. Reuse previous work when nothing relevant changed.
 
-Reviews use OpenCode with ChatGPT subscription authentication. Quota or runtime failures pause processing; there is no paid fallback. The curator can comment, leave informational reviews and label items. Maintainers control approvals, closure and merging.
+Reviews run through OpenCode. The curator can comment, leave informational reviews and label items. Maintainers control approvals, closure and merging.
 
 ## Run it
 
