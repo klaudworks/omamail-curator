@@ -17,6 +17,30 @@ from curator.policy import assessment
 MODELS = {"completeness": "openai/gpt-6-luna#xhigh", "final": "openai/gpt-6.1-sol#xhigh"}
 
 
+def wait_for_evidence(workspace):
+    """Allow transient local API timeouts while the location starts, before inference."""
+    deadline = time.monotonic() + 120
+    endpoint = "/api/mcp?location[directory]=" + urllib.parse.quote(str(workspace), safe="")
+    while True:
+        try:
+            warm = subprocess.run([str(Path.home() / ".local/bin/opencode-vm"), "api", "get", endpoint],
+                                  cwd=workspace, capture_output=True, text=True, timeout=120)
+            catalog = json.loads(warm.stdout) if warm.returncode == 0 else None
+        except (ValueError, subprocess.TimeoutExpired):
+            catalog = None
+        if isinstance(catalog, dict):
+            if catalog.get("location", {}).get("directory") != str(workspace):
+                raise RuntimeError("Evidence MCP location mismatch")
+            servers = [s for s in catalog.get("data", []) if s.get("name") == "curator"]
+            if servers and servers[0]["status"]["status"] == "connected":
+                return
+            if servers and servers[0]["status"]["status"] == "failed":
+                raise RuntimeError("Evidence MCP connection failed")
+        if time.monotonic() > deadline:
+            raise RuntimeError("Evidence MCP startup timed out; no model was started")
+        time.sleep(0.5)
+
+
 def main():
     os.umask(0o077)
     request = json.load(sys.stdin)
@@ -60,20 +84,7 @@ def main():
         (workspace / "opencode.json").write_text(json.dumps(cfg))
         # V2 location activation is asynchronous; wait for its MCP catalog before
         # starting inference instead of allowing a tool-less model turn.
-        deadline = time.monotonic() + 120
-        endpoint = "/api/mcp?location[directory]=" + urllib.parse.quote(str(workspace), safe="")
-        while True:
-            warm = subprocess.run([str(Path.home() / ".local/bin/opencode-vm"), "api", "get", endpoint],
-                                  cwd=workspace, capture_output=True, text=True, timeout=120)
-            catalog = json.loads(warm.stdout)
-            servers = [s for s in catalog.get("data", []) if s.get("name") == "curator"]
-            if catalog.get("location", {}).get("directory") != str(workspace):
-                raise RuntimeError("Evidence MCP location mismatch")
-            if servers and servers[0]["status"]["status"] == "connected":
-                break
-            if time.monotonic() > deadline or (servers and servers[0]["status"]["status"] == "failed"):
-                raise RuntimeError("Evidence MCP did not connect: " + json.dumps(servers)[:1000])
-            time.sleep(0.5)
+        wait_for_evidence(workspace)
         prompt = COMPLETENESS if phase == "completeness" else FINAL
         if request.get("luna"):
             (evidence / "luna.json").write_text(json.dumps(request["luna"], indent=2))
