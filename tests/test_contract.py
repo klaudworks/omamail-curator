@@ -218,6 +218,18 @@ class Contract(unittest.TestCase):
             model.assert_not_called()
         self.assertEqual(self.api.effects, [("DELETE", "/issues/7/labels/review-ready", None)])
 
+    def test_same_scope_acceptance_can_survive_a_new_commit(self):
+        snap = self.snap()
+        old = "c" * 40
+        snap["previous"] = {"head": old, "assessment": {"scope_decisions": [99]}}
+        snap["events"].append({"id": 99, "body": "/curator scope accept " + old, "user": ITEM["user"]})
+        result = {**RESULT, "kind": "feature", "state": "continue", "blockers": [], "scope_decisions": [99]}
+        validate_scope(result, snap, CONFIG, self.cp)
+        self.assertEqual(result["state"], "continue")
+        result["scope_decisions"] = []
+        validate_scope(result, snap, CONFIG, self.cp)
+        self.assertEqual(result["state"], "needs-maintainer-decision")
+
     def test_incomplete_pr_never_starts_final_review(self):
         with tempfile.TemporaryDirectory() as temp, patch("curator.controller.collect", return_value={}), patch("curator.controller.model", return_value=(RESULT, LUNA[0])) as model:
             result = process(self.api, {**CONFIG, "state_dir": temp}, self.cp, 7)

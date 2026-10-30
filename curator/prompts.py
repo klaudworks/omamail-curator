@@ -31,6 +31,9 @@ COMPLETENESS = """Perform the completeness/scope/evidence gate with Luna.
 Read the current description, discussion, CI receipt, baseline criteria and diff.
 If previous assessment exists, FIRST determine whether its blockers are actually
 addressed by the relevant delta. Do not redo a full review merely for a new commit.
+Read delta.patch when input.json identifies it. Reuse a prior explicit scope
+acceptance only if the delta leaves the accepted product scope unchanged; cite
+that comment again. A substantial scope change needs a fresh maintainer decision.
 Features/disputed behavior require explicit unconflicted scope acceptance from a
 configured maintainer; otherwise state needs-maintainer-decision and stop early.
 Missing reproduction, current validation, required hands-on or visual proof means

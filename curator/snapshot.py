@@ -70,6 +70,8 @@ def validate_scope(result, snap, config, checkpoints):
         return
     # Explicit same-revision decisions are deterministic; conflicting decisions block.
     head = snap["pr"]["head"]["sha"] if snap["pr"] else "issue"
+    previous = snap.get("previous") or {}
+    previous_decisions = set(previous.get("assessment", {}).get("scope_decisions", []))
     accepted, rejected = set(), set()
     for e in snap["events"]:
         if e.get("user", {}).get("login", "").lower() not in config["maintainers"] or checkpoints.decode(e, snap["item"]["number"]):
@@ -77,7 +79,13 @@ def validate_scope(result, snap, config, checkpoints):
         lines = (e.get("body") or "").splitlines()
         if f"/curator scope accept {head}" in lines:
             accepted.add(e["id"])
+        if e["id"] in previous_decisions and f"/curator scope accept {previous.get('head')}" in lines:
+            # Luna/Sol must explicitly cite the same acceptance after inspecting
+            # the supplied delta. A SHA change alone does not change product scope.
+            accepted.add(e["id"])
         if f"/curator scope reject {head}" in lines:
+            rejected.add(e["id"])
+        if previous.get("head") and f"/curator scope reject {previous['head']}" in lines:
             rejected.add(e["id"])
     if rejected or not accepted or not set(result["scope_decisions"]) & accepted:
         result.update(state="needs-maintainer-decision", blockers=["Explicit, unconflicted maintainer scope acceptance is required."])

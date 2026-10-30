@@ -27,6 +27,14 @@ def main():
         spec = importlib.util.spec_from_file_location("runner", root / "runner.py")
         runner = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(runner)
+        runner_ssh_args = runner.ssh_args
+        def isolated_ssh_args(data, run):
+            # Everything needed is explicit in the runner. Ignore host/user SSH
+            # configuration, including OrbStack's config ownership across a
+            # systemd user namespace (PrivateTmp).
+            args = runner_ssh_args(data, run)
+            return args[:1] + ["-F", "/dev/null"] + args[1:]
+        runner.ssh_args = isolated_ssh_args
         data, run = runner.state()
         if not runner.running(run):
             launch = json.loads((run / "launch.json").read_text())

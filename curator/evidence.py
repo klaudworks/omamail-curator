@@ -68,6 +68,19 @@ def collect(snap, config, directory, checkpoints):
                "revisions": revisions, "pr": bool(pr), "ci": snap["ci"], "discussion": events,
                "previous": snap["previous"], "changed_files": paths, "criteria_changed": snap["criteria_changed"],
                "omitted_source": omitted, "assets": [], "maintainers": config["maintainers"]}
+    previous_head = (snap.get("previous") or {}).get("head")
+    if pr and previous_head and previous_head != revisions["head"]:
+        try:
+            if not re.fullmatch(r"[0-9a-f]{40}", previous_head):
+                raise Pause("Invalid previous revision")
+            command(["git", "-c", "core.hooksPath=/dev/null", "--git-dir", str(repo), "fetch", "--depth=1", "https://github.com/" + config["repository"] + ".git", previous_head])
+            delta = command(["git", "--git-dir", str(repo), "diff", "--no-ext-diff", "--no-textconv", previous_head, revisions["head"]])
+            if len(delta) > 4 * 1024 * 1024:
+                raise Pause("Delta exceeds bounded evidence ingestion")
+            files["delta.patch"] = base64.b64encode(delta).decode()
+            context["delta"] = {"from": previous_head, "to": revisions["head"], "path": "delta.patch", "equivalent_tree": not delta}
+        except Pause as error:
+            context["delta"] = {"unavailable": str(error), "requirement": "Reassess from the full diff; do not assume unchanged evidence."}
     urls = sorted(set(re.findall(r"https://github\.com/user-attachments/assets/[0-9a-f-]{36}", json.dumps(context))))
     opener = urllib.request.build_opener(AttachmentRedirect)
     for index, url in enumerate(urls):
