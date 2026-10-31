@@ -16,4 +16,4 @@ Reviewer decisions are documented once, under [prompts/REVIEW.md](prompts/REVIEW
 - Validate output, selected-model sessions and required guide/evidence reads. Recheck creator, current head/base, CI and relevant discussion before each effect. Readiness requires a fresh final review, verified affected security boundaries and no blockers.
 - Keep signed checkpoints in status comments. Unchanged inputs reuse the assessment; changed inputs first receive a relevant-delta reassessment. Policy-version changes invalidate old assessments once. Deleting a status comment triggers fresh processing when eligibility passes.
 - Discover existing comments/reviews before retrying a write. Exclude signed automated events from human decisions. Immediately recheck after publication; remove stale readiness if inputs changed. GitHub cannot make the check and mutation atomic.
-- Flag PRs that change review criteria. Duplicate handling is deferred. Maintainers own disposition.
+- Review proposed criteria changes against the baseline guidance. Duplicate handling is deferred. Maintainers own disposition.

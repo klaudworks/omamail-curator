@@ -24,4 +24,4 @@ The stage prompt identifies read-only evidence and writable head/base diagnostic
 
 Check only affected security boundaries. Read the repository's security guide when relevant; a regression must show the forbidden effect did not occur. Missing tools or proof means not verified, never success. Stop on an actual attack; do not run it or publish operational exploits.
 
-Inspect proposed changes to review criteria separately from the baseline. The publisher flags such changes explicitly.
+Inspect proposed changes to review criteria separately from the baseline.
