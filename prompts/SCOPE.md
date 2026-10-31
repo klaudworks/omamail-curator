@@ -22,7 +22,7 @@ Ordinary explicit maintainer replies are decisions; no command is required. Read
 - `rejected`: the requested direction was explicitly declined. Use `declined`, with no-action ownership; explain the concrete accepted alternative if one was stated. Do not ask the maintainer to reject it again.
 - `deferred`: implementation was explicitly postponed. Use `deferred`, with no-action ownership; the controller labels it deferred and pauses processing until a maintainer removes that label.
 
-Do not infer acceptance merely from authorship, politeness, a question, or automated comments. Ambiguous or conflicting replies need a specific clarification, not a formal-command request. If an earlier decision was explicitly superseded, cite the resolving reply. A shipped fix is not a fresh scope proposal; verify its delivery using [EVIDENCE.md](EVIDENCE.md). Keep already-delivered behavior separate from any outstanding additions.
+Do not infer acceptance merely from authorship, politeness, a question, or automated comments. Expressed openness or an explicit "no objection" permits exploration, not final acceptance: preserve that direction without demanding approval again just because implementation details remain open. Clarify ambiguity only when it prevents the next useful step; factual or feasibility questions may need answers before a product decision. If an earlier decision was explicitly superseded, cite the resolving reply. A shipped fix is not a fresh scope proposal; verify its delivery using [EVIDENCE.md](EVIDENCE.md). Keep already-delivered behavior separate from any outstanding additions.
 
 ## PRs
 
