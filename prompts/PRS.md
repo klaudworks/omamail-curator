@@ -4,7 +4,7 @@ Read baseline `CONTRIBUTING.md` and relevant discussion. It defines contribution
 
 ## Completeness stage
 
-Understand the change and beneficiaries. Check previous blockers and the relevant delta first; reuse unaffected evidence and discard obsolete scope blockers. A commit alone does not justify repeating investigation.
+Understand the change and beneficiaries. Check `changes.json` when supplied, previous blockers and the relevant delta first; reuse unaffected evidence and discard obsolete scope blockers. A commit alone does not justify repeating investigation. If routing revisits a previously passed completeness milestone, identify the changed prerequisite and check that gap while retaining unaffected evidence; the routing decision is not proof that evidence is missing.
 
 Apply [SCOPE.md](SCOPE.md), then inspect the required evidence using [EVIDENCE.md](EVIDENCE.md) and [UI.md](UI.md) when applicable. Before reporting, complete a lightweight pass over all applicable prerequisites: problem/reproduction, scope, implementation, relevant regression evidence, and required visual/workflow evidence. Check the description, discussion and evidence index for material already supplied. Collect all concrete missing prerequisites into one actionable request instead of stopping at the first gap. Explain the scenario and expected evidence for each omission; do not add speculative requirements or expand into final review. A complete PR gets `continue`, never `ready`.
 
@@ -16,7 +16,7 @@ Judge reasonable confidence to merge, proportional to the change's impact and ri
 
 Independently inspect the current diff and evidence. The completeness assessment and prior reviews are context, not proof. Focus on substantive deltas while verifying current-revision claims. For UI changes, follow [UI.md](UI.md)'s visual inspection workflow alongside focused interaction tests.
 
-Completeness is a durable entry milestone and may have passed on an earlier revision. Ordinary follow-up commits, description updates and discussion go directly to this stage. Revisit prerequisites here when scope materially changes or required evidence is removed; apply [SCOPE.md](SCOPE.md) to the current change and request concrete missing evidence or a maintainer decision when needed. A retained pass never establishes current scope acceptance, correctness, security or readiness.
+Completeness is an entry milestone and may have passed on an earlier revision. Ordinary follow-up commits, description updates and discussion retain it unless the stage-aware relevance gate routes changed prerequisites back to completeness. Revisit prerequisites here too when scope materially changes or required evidence is removed; apply [SCOPE.md](SCOPE.md) to the current change and request concrete missing evidence or a maintainer decision when needed. A retained pass never establishes current scope acceptance, correctness, security or readiness.
 
 Use focused diagnostics for concrete uncertainties left by source, supplied evidence and current-head CI. Inspect a command's prerequisites before running it: a UI-test target may first compile the entire backend. Run individual tests/functions or minimal reproductions. Do not execute full repository suites such as `make test-qml`, `make test` or `make validate`, or make their absence a review blocker. Follow the verification policy in [EVIDENCE.md](EVIDENCE.md).
 

@@ -114,7 +114,8 @@ export async function guest(input: unknown) {
       .map(t => path.relative(`${root}/evidence`, path.resolve(`${root}/evidence`, String((t.state as { input: Record<string, unknown> }).input.path)))))
     const item = JSON.parse(await readFile(target("input.json"), "utf8"))
     const criteria = ["base/AGENTS.md", ...(item.pr ? ["base/CONTRIBUTING.md"] : [])].filter(n => Object.hasOwn(request.files, n))
-    if (["input.json", ...criteria].some(name => !inspected.has(name))) throw new Pause("Required evidence was not inspected through native read")
+    const missingEvidence = ["input.json", ...(item.changes ? ["changes.json"] : []), ...criteria].filter(name => !inspected.has(name))
+    if (missingEvidence.length) throw new Pause(`Required evidence was not inspected through native read: ${missingEvidence.join(", ")}`)
     const pages = new Set(tools.filter(t => t.name === "curator_guide" && t.state.status === "completed").map(t => (t.state as { input: Record<string, unknown> }).input.page))
     const required = ["REVIEW.md", "REPORT.md", item.pr ? "PRS.md" : "ISSUES.md", ...(item.pr ? ["EVIDENCE.md"] : [])]
     if (required.some(page => !pages.has(page))) throw new Pause("Required runtime guides were not read")

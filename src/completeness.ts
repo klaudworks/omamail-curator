@@ -1,15 +1,16 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
+import { mkdir, readFile, rename, writeFile, rm } from "node:fs/promises"
 import path from "node:path"
 import { assessment, contractVersion, MODELS, type Assessment, type Config } from "./policy.ts"
 import type { Provenance } from "./publisher.ts"
 import type { Snapshot } from "./snapshot.ts"
 
 // Private controller state, never contributor evidence. Preserve a verified pass
-// before final review. Later revisions revisit scope/evidence in final review,
-// rather than repeating the entry check for an already-complete contribution.
+// before final review. Ordinary updates retain it; stage-aware routing can clear
+// it when changed prerequisites need another entry check.
 export class Completeness {
   constructor(private config: Config) {}
   private file(snap: Snapshot) { return path.join(this.config.state_dir, "completeness", `${snap.item.number}.json`) }
+  async invalidate(snap: Snapshot) { await rm(this.file(snap), { force: true }) }
   async save(snap: Snapshot, result: Assessment, provenance: Provenance) {
     if (!snap.pr || assessment(result, "completeness").state !== "continue" || provenance.model !== MODELS.completeness || provenance.verified_tools !== true || !provenance.session.startsWith("ses_")) throw new Error("Only verified passing PR completeness can be retained")
     const file = this.file(snap)

@@ -1,6 +1,7 @@
 import { GitHub } from "./github.ts"
 import { Checkpoints } from "./state.ts"
 import { snapshot, validateScope, type Snapshot } from "./snapshot.ts"
+import type { PublicationContext } from "./changes.ts"
 import { contractVersion, Stop, LABELS, ISSUE_LABELS, MODELS, assessment, eligible, digest, canonical, type Assessment, type Config, type Document, type Phase } from "./policy.ts"
 
 export interface Provenance { model: string, session: string, verified_tools: true }
@@ -21,7 +22,7 @@ export class Publisher {
     const current = await this.fresh(snap)
     if (current.item.labels.some((label: Document) => label.name === "needs-information")) await this.api.mutate("DELETE", `/issues/${snap.item.number}/labels/needs-information`)
   }
-  async publish(snap: Snapshot, raw: Assessment, phase: Phase, sessions: Provenance[], comment = true) {
+  async publish(snap: Snapshot, raw: Assessment, phase: Phase, sessions: Provenance[], comment = true, context?: PublicationContext) {
     let result = assessment(raw, phase)
     const expected = [MODELS.completeness, ...(phase === "final" ? [MODELS.final] : [])]
     if (canonical(sessions.map(s => s.model)) !== canonical(expected) || sessions.some(s => s.verified_tools !== true) || new Set(sessions.map(s => s.session)).size !== expected.length) throw new Stop("Publication requires verified selected-model sessions and evidence tools")
@@ -53,13 +54,19 @@ export class Publisher {
       `### Next step\n**${owner}:** ${result.next_step.action}`,
       [receipt, footer].filter(Boolean).join(" · "),
     ].join("\n\n")
+    const assessmentFingerprint = context?.assessment_fingerprint ?? snap.fingerprint
+    if (!/^[a-f0-9]{64}$/.test(assessmentFingerprint) || context?.discussion_recheck && context.discussion_recheck.fingerprint !== snap.fingerprint) throw new Stop("Invalid assessment/publication fingerprint context")
     const payload = { type: "status", contract_version: version, repository: this.config.repository, number: n, fingerprint: snap.fingerprint,
+      ...(assessmentFingerprint !== snap.fingerprint ? { assessment_fingerprint: assessmentFingerprint } : {}), ...(context?.discussion_recheck ? { discussion_recheck: {
+        fingerprint: context.discussion_recheck.fingerprint, question: context.discussion_recheck.question, added: context.discussion_recheck.added,
+        model: context.discussion_recheck.decision.model, can_skip: context.discussion_recheck.decision.answers.can_skip.noul,
+      } } : {}),
       head: sha, base: snap.pr?.base.sha ?? null, phase, assessment: result, sessions, criteria_changed: criteriaChanged, report_hash: digest(report) }
     const body = report + "\n\n" + this.checkpoints.encode(payload)
     if (Buffer.byteLength(body) > 65000) throw new Stop("status checkpoint exceeds GitHub comment size")
     const existing = current.comments.filter(comment => {
       const previous = this.checkpoints.decode(comment, n, "status")
-      return previous?.contract_version === version && previous.fingerprint === snap.fingerprint &&
+      return previous?.contract_version === version && (previous.fingerprint === snap.fingerprint || (previous.assessment_fingerprint ?? previous.fingerprint) === assessmentFingerprint) &&
         previous.phase === phase && canonical(previous.sessions ?? null) === canonical(sessions)
     }).sort((a, b) => b.id - a.id)[0]
     if (comment && (!existing || existing.body !== body)) {

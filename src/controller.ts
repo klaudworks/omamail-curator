@@ -7,8 +7,9 @@ import { Checkpoints } from "./state.ts"
 import { Completeness } from "./completeness.ts"
 import { Relevance, type Completed } from "./relevance.ts"
 import { Publisher, type Provenance } from "./publisher.ts"
-import { snapshot, validateScope } from "./snapshot.ts"
+import { snapshot, validateScope, type Snapshot } from "./snapshot.ts"
 import { collect } from "./evidence.ts"
+import { reviewBasis } from "./changes.ts"
 import { run } from "./io.ts"
 import { contractVersion, MODELS, Pause, Stop, assessment, eligible, readConfig, type Config, type Phase, type Assessment } from "./policy.ts"
 
@@ -28,7 +29,7 @@ export async function processItem(api: GitHub, config: Config, checkpoints: Chec
   const publisher = new Publisher(api, config, checkpoints)
   const passes = new Completeness(config)
   const relevance = new Relevance(config, checkpoints)
-  let snap
+  let snap: Snapshot
   try { snap = await snapshot(api, config, checkpoints, number) }
   catch (error) {
     if (error instanceof Stop) {
@@ -40,35 +41,48 @@ export async function processItem(api: GitHub, config: Config, checkpoints: Chec
   if (gateOnly) return { number, gate: "eligible", ci: snap.ci, models_started: 0 }
   const finish = async (completed: Completed, comment?: boolean) => {
     // Save model work before any publication or secondary decision can fail.
+    completed = { ...completed, basis: completed.basis ?? reviewBasis(snap, checkpoints) }
     await relevance.retain(snap, completed, comment)
+    const current = await snapshot(api, config, checkpoints, number)
+    const reconciled = await relevance.reconcile(current, completed)
+    if (!reconciled) throw new Stop("publication inputs changed materially; retained result cannot be reused")
+    completed = reconciled
+    snap = { ...current, criteria_changed: snap.criteria_changed }
     comment ??= await relevance.commentNeeded(snap, completed.assessment)
     await relevance.retain(snap, completed, comment)
-    const published = await publisher.publish(snap, completed.assessment, completed.phase, completed.sessions, comment)
+    const published = await publisher.publish(snap, completed.assessment, completed.phase, completed.sessions, comment,
+      { assessment_fingerprint: completed.basis!.fingerprint, discussion_recheck: completed.discussion_recheck })
     await relevance.remember(snap, await publisher.fresh(snap, completed.assessment.state === "deferred"), completed)
     return { ...published, comment_published: comment }
   }
   const pending = await relevance.pending(snap)
-  if (pending && !dryRun) return { ...await finish(pending, pending.comment), reused: true, models_started: 0 }
+  if (pending && !dryRun) {
+    const reusable = await relevance.reconcile(snap, { ...pending, basis: pending.basis ?? reviewBasis(snap, checkpoints) })
+    if (reusable) return { ...await finish(reusable, pending.comment), reused: true, models_started: 0 }
+  }
   if (snap.previous?.contract_version === contractVersion(!!snap.pr) && snap.previous.fingerprint === snap.fingerprint) {
-    if (dryRun) return { number, state: "unchanged", models_started: 0 }
-    const completed = { assessment: snap.previous.assessment, phase: snap.previous.phase, sessions: snap.previous.sessions }
-    return { ...await finish(completed, true), reused: true, models_started: 0 }
+    const completed = await relevance.restore(snap, { assessment: snap.previous.assessment, phase: snap.previous.phase, sessions: snap.previous.sessions })
+    if (completed) return dryRun ? { number, state: "unchanged", models_started: 0 } : { ...await finish(completed, true), reused: true, models_started: 0 }
   }
   // Never leave a new commit labelled as fully reviewed merely because the
   // relevance decision is pending or says that another assessment is unnecessary.
   if (!dryRun && snap.pr && (snap.previous?.head !== snap.pr.head.sha || snap.previous?.base !== snap.pr.base.sha)) await publisher.invalidate(snap.item)
-  const decision = await relevance.decide(api, snap, dryRun)
+  let retained = await passes.load(snap)
+  const { context, ...decision } = await relevance.decide(api, snap, dryRun, retained?.result ?? null)
   await publisher.fresh(snap)
   if (!decision.review) return { number, state: "unchanged", ...decision, models_started: 0 }
+  if (retained && decision.stage === "completeness") {
+    if (!dryRun) await passes.invalidate(snap)
+    retained = null
+  }
   if (!dryRun) await publisher.invalidate(snap.item)
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z")
   const logdir = path.join(config.state_dir, "runs", `${stamp}-${number}-${randomBytes(3).toString("hex")}`)
   await mkdir(logdir, { recursive: true, mode: 0o700 })
   const temp = await mkdtemp(path.join(logdir, "evidence-"))
   try {
-    const files = await collect(snap, config, temp, checkpoints, api)
+    const files = await collect(snap, config, temp, checkpoints, api, context)
     await publisher.fresh(snap)
-    const retained = await passes.load(snap)
     const completeness = retained ?? await model(config, files, "completeness", logdir)
     let result = validateScope(completeness.result, snap, config, checkpoints), phase: Phase = "completeness"
     const sessions = [completeness.provenance]
@@ -83,7 +97,7 @@ export async function processItem(api: GitHub, config: Config, checkpoints: Chec
     }
     const output = { number, phase, assessment: result, sessions, completeness_reused: !!retained }
     await writeFile(path.join(logdir, "result.json"), JSON.stringify(output, null, 2))
-    return dryRun ? { ...output, dry_run: true, relevance: decision } : { ...await finish({ assessment: result, phase, sessions }), relevance: decision }
+    return dryRun ? { ...output, dry_run: true, relevance: decision } : { ...await finish({ assessment: result, phase, sessions, basis: reviewBasis(snap, checkpoints) }), relevance: decision }
   } finally { await rm(temp, { recursive: true, force: true }) }
 }
 

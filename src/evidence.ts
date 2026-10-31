@@ -5,6 +5,7 @@ import { checked, bounded } from "./io.ts"
 import { Checkpoints } from "./state.ts"
 import type { GitHub } from "./github.ts"
 import type { Snapshot } from "./snapshot.ts"
+import type { ChangeContext } from "./changes.ts"
 
 const env = { PATH: process.env.PATH, HOME: "/nonexistent", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_TERMINAL_PROMPT: "0", LANG: "C.UTF-8" }
 const command = (args: string[], input?: string) => checked(args, { env, input, timeout: 180_000 })
@@ -28,7 +29,7 @@ async function attachment(url: string) {
   throw new Error("Too many attachment redirects")
 }
 
-export async function collect(snap: Snapshot, config: Config, directory: string, checkpoints: Checkpoints, api: GitHub) {
+export async function collect(snap: Snapshot, config: Config, directory: string, checkpoints: Checkpoints, api: GitHub, changes?: ChangeContext) {
   const repo = path.join(directory, "source.git"), pr = snap.pr
   await command(["git", "-c", "core.hooksPath=/dev/null", "init", "--bare", repo])
   let revisions = pr ? { head: validSHA(pr.head.sha), base: validSHA(pr.base.sha) } : { head: "HEAD", base: "HEAD" }
@@ -78,6 +79,10 @@ export async function collect(snap: Snapshot, config: Config, directory: string,
     eligibility: { repository: config.repository, opener_verified: true, state: "open", draft: pr ? false : null, ci_gate: pr ? "passed" : "not applicable to issues" },
     revisions, comparison: { base: comparisonBase, head: revisions.head, path: "diff.patch" }, pr: !!pr, ci: snap.ci, discussion: events, previous: snap.previous, changed_files: paths, criteria_changed: snap.criteria_changed,
     omitted_source: omitted, assets: [], maintainers: config.maintainers }
+  if (changes) {
+    files["changes.json"] = Buffer.from(JSON.stringify(changes, null, 2)).toString("base64")
+    context.changes = { path: "changes.json", meaning: "The same assessed baseline, accumulated changes and workflow state used by the controller's relevance gate. Start here for incremental work; verify against current evidence." }
+  }
   if (!pr) {
     const release: Document = { current_source: revisions.head }
     try {
