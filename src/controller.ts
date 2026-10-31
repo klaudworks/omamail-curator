@@ -5,6 +5,7 @@ import { parseArgs } from "node:util"
 import { GitHub } from "./github.ts"
 import { Checkpoints } from "./state.ts"
 import { Completeness } from "./completeness.ts"
+import { Relevance, type Completed } from "./relevance.ts"
 import { Publisher, type Provenance } from "./publisher.ts"
 import { snapshot, validateScope } from "./snapshot.ts"
 import { collect } from "./evidence.ts"
@@ -26,6 +27,7 @@ async function model(config: Config, files: Record<string, string>, phase: Phase
 export async function processItem(api: GitHub, config: Config, checkpoints: Checkpoints, number: number, dryRun = false, gateOnly = false) {
   const publisher = new Publisher(api, config, checkpoints)
   const passes = new Completeness(config)
+  const relevance = new Relevance(config, checkpoints)
   let snap
   try { snap = await snapshot(api, config, checkpoints, number) }
   catch (error) {
@@ -36,10 +38,28 @@ export async function processItem(api: GitHub, config: Config, checkpoints: Chec
     throw error
   }
   if (gateOnly) return { number, gate: "eligible", ci: snap.ci, models_started: 0 }
+  const finish = async (completed: Completed, comment?: boolean) => {
+    // Save model work before any publication or secondary decision can fail.
+    await relevance.retain(snap, completed, comment)
+    comment ??= await relevance.commentNeeded(snap, completed.assessment)
+    await relevance.retain(snap, completed, comment)
+    const published = await publisher.publish(snap, completed.assessment, completed.phase, completed.sessions, comment)
+    await relevance.remember(snap, await publisher.fresh(snap, completed.assessment.state === "deferred"), completed)
+    return { ...published, comment_published: comment }
+  }
+  const pending = await relevance.pending(snap)
+  if (pending && !dryRun) return { ...await finish(pending, pending.comment), reused: true, models_started: 0 }
   if (snap.previous?.contract_version === contractVersion(!!snap.pr) && snap.previous.fingerprint === snap.fingerprint) {
     if (dryRun) return { number, state: "unchanged", models_started: 0 }
-    return { ...await publisher.publish(snap, snap.previous.assessment, snap.previous.phase, snap.previous.sessions), reused: true, models_started: 0 }
+    const completed = { assessment: snap.previous.assessment, phase: snap.previous.phase, sessions: snap.previous.sessions }
+    return { ...await finish(completed, true), reused: true, models_started: 0 }
   }
+  // Never leave a new commit labelled as fully reviewed merely because the
+  // relevance decision is pending or says that another assessment is unnecessary.
+  if (!dryRun && snap.pr && (snap.previous?.head !== snap.pr.head.sha || snap.previous?.base !== snap.pr.base.sha)) await publisher.invalidate(snap.item)
+  const decision = await relevance.decide(api, snap, dryRun)
+  await publisher.fresh(snap)
+  if (!decision.review) return { number, state: "unchanged", ...decision, models_started: 0 }
   if (!dryRun) await publisher.invalidate(snap.item)
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z")
   const logdir = path.join(config.state_dir, "runs", `${stamp}-${number}-${randomBytes(3).toString("hex")}`)
@@ -59,11 +79,11 @@ export async function processItem(api: GitHub, config: Config, checkpoints: Chec
       await publisher.fresh(snap)
       const final = await model(config, files, "final", logdir, result)
       if (final.provenance.session === completeness.provenance.session) throw new Pause("Final review must use a fresh session")
-      result = final.result; phase = "final"; sessions.push(final.provenance)
+      result = validateScope(final.result, snap, config, checkpoints); phase = "final"; sessions.push(final.provenance)
     }
     const output = { number, phase, assessment: result, sessions, completeness_reused: !!retained }
     await writeFile(path.join(logdir, "result.json"), JSON.stringify(output, null, 2))
-    return dryRun ? { ...output, dry_run: true } : publisher.publish(snap, result, phase, sessions)
+    return dryRun ? { ...output, dry_run: true, relevance: decision } : { ...await finish({ assessment: result, phase, sessions }), relevance: decision }
   } finally { await rm(temp, { recursive: true, force: true }) }
 }
 

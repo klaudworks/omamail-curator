@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises"
 
-export const GUIDE_PAGES = ["REVIEW.md", "ISSUES.md", "PRS.md", "SCOPE.md", "EVIDENCE.md", "UI.md", "REPORT.md", "OMAMAIL.md"]
+export const GUIDE_PAGES = ["REVIEW.md", "ISSUES.md", "ISSUE-BUGS.md", "ISSUE-CHANGES.md", "ISSUE-FEATURES.md", "ISSUE-SUPPORT.md", "PRS.md", "SCOPE.md", "EVIDENCE.md", "UI.md", "REPORT.md", "OMAMAIL.md"]
 export const guides = async () => Object.fromEntries(await Promise.all(GUIDE_PAGES.map(async page => [page, await readFile(new URL(`../prompts/${page}`, import.meta.url), "utf8")])))
 export const SYSTEM = `You assess contributions for human maintainers.
 Start with curator_guide(page="REVIEW.md"), the operator-controlled runtime index.

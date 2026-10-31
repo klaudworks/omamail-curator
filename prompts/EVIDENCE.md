@@ -12,6 +12,10 @@ The existing current-head CI gate is the verification baseline. Do not introduce
 
 ## Investigation
 
+For issues, verify facts that the supplied materials can establish before assigning work to anyone. Read `release.json` when delivery matters: it identifies the published pinned backend tag, its source revision, and a complete Git changed-path list against the current source; `release.patch` supplies bounded differences when available. A source path absent from that complete list is identical at the release revision. This establishes source/release inclusion, not a live-provider test. Read relevant entries in `related.json` for linked issue/PR status and maintainer replies. These are collection-time snapshots, not guarantees of future state. If a lookup is unavailable, say exactly what is unknown rather than calling it missing contributor evidence.
+
+Check a claimed fix against the actual current/released source and existing regression coverage. Run a small relevant diagnostic when it can resolve a concrete uncertainty. Do not request a maintainer check of a release fact that is supplied, or an author reproduction detail already present in the report or screenshot. Do not claim you ran a test after only reading it. Historical comments are leads, not current-source proof. These evidence trees have no Git history; use the supplied revision/release metadata rather than `git log` or `git tag` in a snapshot.
+
 Use the evidence index in `input.json`. Open details only for the question being decided:
 
 - Discussion: intent, objections, new proof and resolved findings.

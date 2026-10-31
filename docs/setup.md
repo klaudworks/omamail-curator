@@ -46,6 +46,8 @@ The private guest environment supplies model authentication/network settings. Us
 
 Copy [config.example.json](../deploy/config.example.json) to private controller storage. Set the repository, publisher, maintainers, CI workflows and absolute credential/state paths. Set `transport` to the absolute Bun executable followed by the absolute path to `deploy/vm-bridge.ts`. Give the GitHub token file mode `0600`.
 
+Optionally set `decision_token_file` to a private `0600` file containing a TypeSafe API key on the controller only. This enables the pinned Jev [relevance gate](relevance.md). Never put the key in Git, the reviewer evidence package or guest environment. Without it, changed inputs retain the ordinary full-review behavior.
+
 Enrollment is controlled by:
 
 - `authors`: allowed authors of issues and PRs.

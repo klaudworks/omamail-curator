@@ -2,16 +2,18 @@
 
 Helps maintainers of [Omamail](https://github.com/huacnlee/omamail) understand issues and review pull requests. It checks what's missing, investigates relevant evidence, and leaves a short comment with the next useful action.
 
-Every update has a stage title, a short summary, missing prerequisites or review findings, and one owner-labelled next step. A compact footer links the reviewed commit; final reviews also include a security verdict.
+Issue replies are short natural comments with an automated-curator attribution. PR reports have a stage title, findings, one owner-labelled next step and a reviewed-commit footer; final reviews also include a security verdict.
 
 ## How it works
 
 1. Find eligible items, oldest first. PR checks must pass on the current commit.
-2. Triage issues as bugs (`bug`), feature requests (`enhancement`), or support/disputed behavior (`question`). Ask only for missing information needed to reproduce or investigate a bug. Tag configured maintainers for every feature-request scope decision. Small PR refinements can proceed; fundamental direction changes need a maintainer decision.
+2. Triage issues as bugs (`bug`), enhancements (`enhancement`), or support/disputed behavior (`question`). Verify available source, release and discussion evidence. Tag the creator for missing details or invite their coding agent to prepare a focused fix/enhancement PR with before/after evidence. Larger product changes go to maintainers for a specific scope question; ordinary replies record their decisions.
 3. When a PR is complete, use a fresh agent for final review.
-4. Post one comment per completed assessment and update category/status labels. Unchanged polling checks reuse previous work without posting again; new answers trigger reassessment.
+4. Post one initial issue assessment and one comment per completed PR assessment. Update category/status labels. Optional Jev decisions skip nonmaterial updates; useful changed issue answers get a follow-up comment. Unchanged polling reuses work without model calls or another comment.
 
 Reviews run through OpenCode. The curator posts normal comments and labels items. Maintainers control approvals, closure and merging.
+
+Bug clarification requests include a copy-paste diagnostic prompt and instructions to update the issue using `gh`. Explicit maintainer deferrals receive `deferred`; declined proposals receive `wontfix`. No issue is closed automatically. The [issue index](prompts/ISSUES.md) routes to short type-specific guides.
 
 Implemented in TypeScript with Bun and the OpenCode V2 SDK. See the [setup guide](docs/setup.md) to install and operate it.
 

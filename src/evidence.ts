@@ -78,6 +78,47 @@ export async function collect(snap: Snapshot, config: Config, directory: string,
     eligibility: { repository: config.repository, opener_verified: true, state: "open", draft: pr ? false : null, ci_gate: pr ? "passed" : "not applicable to issues" },
     revisions, comparison: { base: comparisonBase, head: revisions.head, path: "diff.patch" }, pr: !!pr, ci: snap.ci, discussion: events, previous: snap.previous, changed_files: paths, criteria_changed: snap.criteria_changed,
     omitted_source: omitted, assets: [], maintainers: config.maintainers }
+  if (!pr) {
+    const release: Document = { current_source: revisions.head }
+    try {
+      const version = Buffer.from(files["base/backend-version"] ?? "", "base64").toString().trim()
+      if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error("No supported pinned release version")
+      const tag = `v${version}`, published = await api.get(`/releases/tags/${tag}`)
+      if (published.draft || published.tag_name !== tag || !published.published_at) throw new Error("Pinned release is not published")
+      const commit = await api.get(`/commits/${tag}`), sha = validSHA(commit.sha)
+      await fetchSource(sha)
+      const changed = (await command([...diffArgs, "--name-only", "-z", sha, revisions.head])).toString().split("\0").filter(Boolean)
+      const releaseDiff = await command([...diffArgs, sha, revisions.head])
+      Object.assign(release, { version, tag, url: published.html_url, published_at: published.published_at, prerelease: published.prerelease,
+        source: sha, changed_paths: changed, changed_paths_complete: true,
+        meaning: "Paths absent from changed_paths have identical Git content at the pinned release and current source. This is source inclusion, not live-provider verification." })
+      if (releaseDiff.length <= 4 * 1024 * 1024) { files["release.patch"] = releaseDiff.toString("base64"); release.patch = "release.patch" }
+      else release.patch_unavailable = "Release diff exceeds bounded ingestion limit; changed_paths remains complete."
+    } catch (error) { release.unavailable = String(error).slice(0, 300) }
+    files["release.json"] = Buffer.from(JSON.stringify(release, null, 2)).toString("base64")
+    context.release = { path: "release.json" }
+
+    const texts = [...events].reverse().map(e => e.body ?? "").concat(snap.item.body ?? "")
+    const repositoryPattern = config.repository.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    const referencePattern = new RegExp(`(?:https://github\\.com/${repositoryPattern}/(?:issues|pull)/|(?<![\\w/])#)([1-9]\\d*)\\b`, "g")
+    const references = [...new Set(texts.flatMap(text => [...String(text).matchAll(referencePattern)].map(match => Number(match[1]))))].filter(n => n !== snap.item.number)
+    const related: Document = { items: [], omitted_numbers: references.slice(8), collected_at: new Date().toISOString() }
+    for (const number of references.slice(0, 8)) {
+      try {
+        const item = await api.get(`/issues/${number}`)
+        const comments = (await api.pages(`/issues/${number}/comments`)).filter(c => !checkpoints.decode(c, number))
+        const entry: Document = { number, title: item.title, body: item.body, url: item.html_url, state: item.state, author: item.user?.login,
+          comments: comments.map(c => ({ id: c.id, user: c.user, body: c.body, updated_at: c.updated_at, url: c.html_url })) }
+        if (item.pull_request) {
+          const linked = await api.get(`/pulls/${number}`)
+          entry.pr = { draft: linked.draft, merged: linked.merged, merged_at: linked.merged_at, merge_commit_sha: linked.merge_commit_sha, head: linked.head?.sha }
+        }
+        related.items.push(entry)
+      } catch (error) { related.items.push({ number, unavailable: String(error).slice(0, 300) }) }
+    }
+    files["related.json"] = Buffer.from(JSON.stringify(related, null, 2)).toString("base64")
+    context.related = { path: "related.json", count: related.items.length, omitted: related.omitted_numbers.length }
+  }
   const previousHead = snap.previous?.head
   if (pr && previousHead && previousHead !== revisions.head) {
     try {

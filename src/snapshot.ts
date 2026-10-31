@@ -1,11 +1,11 @@
 import { GitHub } from "./github.ts"
 import { Checkpoints } from "./state.ts"
-import { Stop, eligible, authorAllowed, successfulRuns, type Config, type Document, type Assessment } from "./policy.ts"
+import { Stop, Pause, eligible, authorAllowed, successfulRuns, type Config, type Document, type Assessment } from "./policy.ts"
 
-export async function snapshot(api: GitHub, config: Config, checkpoints: Checkpoints, number: number) {
+export async function snapshot(api: GitHub, config: Config, checkpoints: Checkpoints, number: number, allowDeferred = false) {
   const item = await api.get(`/issues/${number}`)
   eligible(item, config)
-  if (item.labels.some((l: Document) => l.name === "deferred")) throw new Stop("deferred; a maintainer must remove the deferred label to resume")
+  if (!allowDeferred && item.labels.some((l: Document) => l.name === "deferred")) throw new Stop("deferred; a maintainer must remove the deferred label to resume")
   let pr: Document | null = null
   let receipt: ReturnType<typeof successfulRuns> = []
   if (item.pull_request) {
@@ -56,8 +56,9 @@ export async function snapshot(api: GitHub, config: Config, checkpoints: Checkpo
 export type Snapshot = Awaited<ReturnType<typeof snapshot>>
 
 export function validateScope(result: Assessment, snap: Snapshot, config: Config, checkpoints: Checkpoints): Assessment {
-  const featureIssue = !snap.pr && result.kind === "feature"
-  if (result.malicious || !featureIssue && !["continue", "ready", "handoff", "needs-information", "needs-maintainer-decision"].includes(result.state)) return result
+  if (!snap.pr) return validateIssueScope(result, snap, config, checkpoints)
+  if (result.issue_decision || result.author_prompt || ["declined", "deferred"].includes(result.state)) throw new Pause("Issue-only fields on a PR")
+  if (!["continue", "ready", "handoff", "needs-information", "needs-maintainer-decision"].includes(result.state)) return result
   const head = snap.pr?.head.sha ?? "issue", previous = snap.previous ?? {}
   const prior = new Set(previous.assessment?.scope_decisions ?? []), accepted = new Set<number>(), rejected = new Set<number>()
   for (const event of snap.events) {
@@ -66,10 +67,31 @@ export function validateScope(result: Assessment, snap: Snapshot, config: Config
     if (lines.includes(`/curator scope accept ${head}`) || prior.has(event.id) && lines.includes(`/curator scope accept ${previous.head}`)) accepted.add(event.id)
     if (lines.includes(`/curator scope reject ${head}`) || previous.head && lines.includes(`/curator scope reject ${previous.head}`)) rejected.add(event.id)
   }
-  const needsAcceptance = (featureIssue || result.scope !== "routine") && !result.scope_decisions.some(id => accepted.has(id))
+  const needsAcceptance = result.scope !== "routine" && !result.scope_decisions.some(id => accepted.has(id))
   if (!rejected.size && !needsAcceptance) return result
-  const blocker = rejected.size ? "A maintainer has objected to this direction; resolve that objection first." : featureIssue ? "A maintainer needs to decide whether this feature request is within scope." : "A maintainer needs to confirm this change to the product's direction."
+  const blocker = rejected.size ? "A maintainer has objected to this direction; resolve that objection first." : "A maintainer needs to confirm this change to the product's direction."
   return { ...result, state: "needs-maintainer-decision", findings: result.state === "needs-maintainer-decision" ? result.findings : [blocker, ...result.findings.slice(0, 2)],
-    next_step: { owner: "maintainer", action: rejected.size ? "Resolve the recorded objection and state whether this direction is accepted." : featureIssue ? "Decide whether this feature belongs in Omamail; record /curator scope accept issue or /curator scope reject issue in a comment." : "Confirm whether this product-direction change should proceed, and record the scope decision." },
+    next_step: { owner: "maintainer", action: rejected.size ? "Resolve the recorded objection and state whether this direction is accepted." : "Confirm whether this product-direction change should proceed, and record the scope decision." },
     blockers: result.blockers.includes(blocker) ? result.blockers : [...result.blockers, blocker] }
+}
+
+function validateIssueScope(result: Assessment, snap: Snapshot, config: Config, checkpoints: Checkpoints): Assessment {
+  if (["continue", "ready"].includes(result.state)) throw new Pause("Issue cannot become PR-ready")
+  if (result.malicious) return result
+  if (result.kind === "bug" && result.state === "needs-information" && (result.next_step.owner !== "author" || !result.author_prompt)) throw new Pause("Bug clarification needs an author-owned copy-paste agent prompt")
+  if (result.author_prompt && result.next_step.owner !== "author") throw new Pause("Author prompt requires an author next step")
+  const decision = result.issue_decision
+  if (result.scope_decisions.length) throw new Pause("Issues cite quoted issue_decision evidence, not PR scope commands")
+  if (decision) for (const citation of decision.comments) {
+    const event = snap.comments.find(c => c.id === citation.id)
+    if (!event || !config.maintainers.includes(event.user?.login?.toLowerCase()) || checkpoints.decode(event, snap.item.number) ||
+      !citation.quote.trim() || !event.body?.includes(citation.quote)) throw new Pause("Issue decision needs an exact quote from a configured maintainer comment")
+  }
+  if (result.state === "declined" && decision?.disposition !== "rejected" || result.state === "deferred" && decision?.disposition !== "deferred") throw new Pause("Issue disposition lacks maintainer evidence")
+  if (decision?.disposition === "rejected" && result.state !== "declined" || decision?.disposition === "deferred" && result.state !== "deferred") throw new Pause("Issue assessment must honor the cited maintainer decision")
+  if (["declined", "deferred"].includes(result.state) && result.next_step.owner !== "none") throw new Pause("Settled issue decisions must not ask for another decision")
+  if (result.state === "handoff" && result.next_step.owner !== "author") throw new Pause("Actionable issues invite the creator to prepare a PR")
+  if (result.scope !== "routine" && decision?.disposition !== "accepted" &&
+    !["needs-maintainer-decision", "needs-information", "blocked", "verified-fixed", "declined", "deferred"].includes(result.state)) throw new Pause("Non-routine issue needs a supported scope decision")
+  return result
 }

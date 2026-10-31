@@ -5,7 +5,7 @@ export class Stop extends Error {}
 export class Pause extends Error {}
 export type Phase = "completeness" | "final"
 export const CONTRACT_VERSION = 12
-export const ISSUE_CONTRACT_VERSION = 13
+export const ISSUE_CONTRACT_VERSION = 14
 export const contractVersion = (pullRequest: boolean) => pullRequest ? CONTRACT_VERSION : ISSUE_CONTRACT_VERSION
 export const MODELS = { completeness: "openai/gpt-6.1-terra#medium", final: "openai/gpt-6.1-sol#xhigh" }
 export const LABELS = new Set(["needs-information", "needs-maintainer-decision", "review-ready"])
@@ -28,6 +28,7 @@ export const ConfigSchema = Schema.Struct({
   all_issue_authors: Schema.optional(Schema.Boolean),
   tracked_prs: Schema.optional(Schema.Array(Schema.Int)),
   publisher_login: Schema.String, token_file: Schema.String, state_dir: Schema.String,
+  decision_token_file: Schema.optional(Schema.String),
   transport: Schema.Array(Schema.String), pipelines: Schema.Array(Schema.Struct({ path: Schema.String, jobs: Schema.Array(Schema.String) })),
 })
 export type Config = typeof ConfigSchema.Type
@@ -47,11 +48,16 @@ const text = (min: number, max: number) => Schema.String.check(Schema.isMinLengt
 const AssessmentSchema = Schema.Struct({
   kind: Schema.Literals(["bug", "feature", "disputed", "support"]),
   scope: Schema.Literals(["routine", "fundamental", "uncertain"]),
-  state: Schema.Literals(["continue", "needs-information", "needs-maintainer-decision", "blocked", "ready", "handoff", "support", "verified-fixed"]),
+  state: Schema.Literals(["continue", "needs-information", "needs-maintainer-decision", "blocked", "ready", "handoff", "support", "verified-fixed", "declined", "deferred"]),
   summary: text(20, 400), findings: Schema.Array(text(1, 400)).check(Schema.isMinLength(1), Schema.isMaxLength(3)),
   next_step: Schema.Struct({ owner: Schema.Literals(["author", "maintainer", "none"]), action: text(10, 600) }),
   security: Schema.Literals(["PASS", "BLOCK", "NOT VERIFIED"]), blockers: Schema.Array(Schema.String),
   scope_decisions: Schema.Array(Schema.Int), malicious: Schema.Boolean,
+  issue_decision: Schema.optional(Schema.Struct({
+    disposition: Schema.Literals(["accepted", "rejected", "deferred"]),
+    comments: Schema.Array(Schema.Struct({ id: Schema.Int, quote: text(10, 1500) })).check(Schema.isMinLength(1), Schema.isMaxLength(5)),
+  })),
+  author_prompt: Schema.optional(text(20, 2400)),
 })
 export type Assessment = typeof AssessmentSchema.Type
 export function assessment(value: unknown, phase: Phase): Assessment {
@@ -64,6 +70,7 @@ export function assessment(value: unknown, phase: Phase): Assessment {
   if (malicious && state !== "blocked") throw new Pause("Detected attack must stop the item")
   if (state === "ready" && (phase !== "final" || security !== "PASS" || blockers.length)) throw new Pause("Readiness requires a final unblocked security pass")
   if (state === "continue" && (phase !== "completeness" || blockers.length || malicious)) throw new Pause("Invalid stage continuation")
+  if (result.author_prompt?.includes("```")) throw new Pause("Author prompt must not contain Markdown fences")
   return result
 }
 

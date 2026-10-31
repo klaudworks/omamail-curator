@@ -1,14 +1,13 @@
-# Issues
+# Issue triage
 
-Find the next useful action; an issue need not contain a finished implementation.
+Read the report and discussion, then open the guide matching the remaining request.
 
-1. Read the report and relevant discussion. If a prior assessment exists, check whether its unresolved questions have been answered before repeating investigation.
-2. Classify the underlying request, not just its title: `bug` for broken existing behavior, `feature` for a new capability or requested customization, `support` for usage/configuration help, and `disputed` when intended behavior needs clarification. The publisher maps these to `bug`, `enhancement`, or `question` labels.
-3. For a bug, establish expected versus actual behavior and the smallest reproduction. Ask together for the concrete missing details needed to investigate: steps and triggering conditions, relevant version/platform/provider, and an exact error or focused log excerpt when applicable. Do not repeat answered questions or demand a generic checklist, finished fix, full suite, or recording unless it resolves a specific uncertainty. Request sanitized examples rather than credentials or private mail. Use [EVIDENCE.md](EVIDENCE.md) for a focused check; distinguish a reporter's reproduction from one you independently verified. Once sufficient information exists, use `handoff` with a maintainer next step rather than collecting more evidence by default.
-4. Every feature request, including a routine refinement, needs a maintainer scope decision before implementation handoff. Summarize the user need and proposed behavior, then use `needs-maintainer-decision` with a maintainer next step; the publisher supplies the mentions. Read [SCOPE.md](SCOPE.md) for the accepted decision format and cite its comment ID in `scope_decisions`. Ask maintainers to record `/curator scope accept issue` or `/curator scope reject issue` on its own line. Missing details that affect that decision belong in the findings; do not send a well-described request back for bug-reproduction evidence. After acceptance, ask only for genuinely missing requirements or use `handoff`; acceptance is not a promise to implement.
-5. For disputed behavior, distinguish a defect from a design preference using the report, documentation and discussion. Ask a focused question of the author when facts are missing, or the maintainers when intended behavior is the open question. Do not classify a clear feature request as disputed to bypass its scope decision.
-6. For support, give useful usage/configuration guidance. A reproducible defect discovered there enters bug handling. An already-fixed claim requires evidence before `verified-fixed`.
-
-Use `needs-information` for a concrete unanswered question. Issues have no PR CI requirement and never use `continue` or `ready`. Closure and duplicate handling remain human decisions.
-
-Finish with [REPORT.md](REPORT.md).
+| Category | Guide |
+| --- | --- |
+| Bug: existing or documented behavior fails | [ISSUE-BUGS.md](ISSUE-BUGS.md) |
+| Small enhancement within existing functionality | [ISSUE-CHANGES.md](ISSUE-CHANGES.md) |
+| Large feature, new integration/workflow, or unclear product boundary | [ISSUE-FEATURES.md](ISSUE-FEATURES.md) |
+| Usage question or unclear intended behavior | [ISSUE-SUPPORT.md](ISSUE-SUPPORT.md) |
+| Verify source, release, discussion or reproduction claims | [EVIDENCE.md](EVIDENCE.md) |
+| Interpret an existing maintainer direction | [SCOPE.md](SCOPE.md) |
+| Write the response | [REPORT.md](REPORT.md) |
