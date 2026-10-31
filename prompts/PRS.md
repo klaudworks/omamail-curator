@@ -14,6 +14,8 @@ This stage checks prerequisites. Do not run repository-wide builds, test suites,
 
 Independently inspect the current diff and evidence. The completeness assessment and prior reviews are context, not proof. Focus on substantive deltas while verifying current-revision claims. For UI changes, follow [UI.md](UI.md)'s visual inspection workflow alongside focused interaction tests.
 
+Completeness is a durable entry milestone and may have passed on an earlier revision. Ordinary follow-up commits, description updates and discussion go directly to this stage. Revisit prerequisites here when scope materially changes or required evidence is removed; apply [SCOPE.md](SCOPE.md) to the current change and request concrete missing evidence or a maintainer decision when needed. A retained pass never establishes current scope acceptance, correctness, security or readiness.
+
 Use focused diagnostics for concrete uncertainties left by source, supplied evidence and current-head CI. Inspect a command's prerequisites before running it: a UI-test target may first compile the entire backend. Run individual tests/functions or minimal reproductions. Do not execute full repository suites such as `make test-qml`, `make test` or `make validate`, or make their absence a review blocker. Follow the verification policy in [EVIDENCE.md](EVIDENCE.md).
 
 Assess product fit, interaction design, correctness, regressions, performance and affected security boundaries. Every finding needs evidence of what fails, who is affected and what resolves it. Use `ready` only with no blockers and security `PASS`; otherwise identify the actual defect, missing proof or fundamental product decision.

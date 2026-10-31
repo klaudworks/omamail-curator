@@ -25,7 +25,7 @@ async function model(config: Config, files: Record<string, string>, phase: Phase
 
 export async function processItem(api: GitHub, config: Config, checkpoints: Checkpoints, number: number, dryRun = false, gateOnly = false) {
   const publisher = new Publisher(api, config, checkpoints)
-  const passes = new Completeness(config, checkpoints)
+  const passes = new Completeness(config)
   let snap
   try { snap = await snapshot(api, config, checkpoints, number) }
   catch (error) {
