@@ -1,6 +1,6 @@
 import { GitHub } from "./github.ts"
 import { Checkpoints } from "./state.ts"
-import { Stop, eligible, successfulRuns, type Config, type Document, type Assessment } from "./policy.ts"
+import { Stop, eligible, authorAllowed, successfulRuns, type Config, type Document, type Assessment } from "./policy.ts"
 
 export async function snapshot(api: GitHub, config: Config, checkpoints: Checkpoints, number: number) {
   const item = await api.get(`/issues/${number}`)
@@ -12,7 +12,7 @@ export async function snapshot(api: GitHub, config: Config, checkpoints: Checkpo
     pr = await api.get(`/pulls/${number}`)
     if (!pr) throw new Stop("PR unavailable")
     if (pr.draft) throw new Stop("draft PR")
-    if (pr.state !== "open" || !config.authors.includes(pr.user.login.toLowerCase())) throw new Stop("PR no longer eligible")
+    if (pr.state !== "open" || !authorAllowed(pr, config, true)) throw new Stop("PR no longer eligible")
     const workflows: Record<string, Document> = {}
     for (const spec of config.pipelines) {
       const workflow = await api.get(`/actions/workflows/${encodeURIComponent(spec.path.split("/").at(-1)!)}`)

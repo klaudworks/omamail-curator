@@ -21,11 +21,21 @@ export const digest = (value: unknown) => createHash("sha256").update(canonical(
 
 export const ConfigSchema = Schema.Struct({
   repository: Schema.String, authors: Schema.Array(Schema.String), maintainers: Schema.Array(Schema.String),
+  all_pr_authors_since: Schema.optional(Schema.String),
   publisher_login: Schema.String, token_file: Schema.String, state_dir: Schema.String,
   transport: Schema.Array(Schema.String), pipelines: Schema.Array(Schema.Struct({ path: Schema.String, jobs: Schema.Array(Schema.String) })),
 })
 export type Config = typeof ConfigSchema.Type
-export const readConfig = (value: unknown) => Schema.decodeUnknownSync(ConfigSchema)(value, { onExcessProperty: "error" })
+function utcTimestamp(value: unknown) {
+  if (typeof value !== "string") return NaN
+  const time = Date.parse(value)
+  return Number.isFinite(time) && new Date(time).toISOString().replace(".000Z", "Z") === value.replace(".000Z", "Z") ? time : NaN
+}
+export function readConfig(value: unknown) {
+  const config = Schema.decodeUnknownSync(ConfigSchema)(value, { onExcessProperty: "error" })
+  if (config.all_pr_authors_since !== undefined && !Number.isFinite(utcTimestamp(config.all_pr_authors_since))) throw new Pause("all_pr_authors_since must be a UTC ISO timestamp")
+  return config
+}
 
 const text = (min: number, max: number) => Schema.String.check(Schema.isMinLength(min), Schema.isMaxLength(max))
 const AssessmentSchema = Schema.Struct({
@@ -54,9 +64,15 @@ export function assessment(value: unknown, phase: Phase): Assessment {
 // GitHub documents are retained intact as evidence. Accessors below fail closed
 // on absent gate fields; model output uses the strict schema above.
 export type Document = Record<string, any>
+export function authorAllowed(item: Document, config: Config, pullRequest: boolean) {
+  const login = item.user?.login
+  if (typeof login !== "string" || !login) return false
+  return config.authors.includes(login.toLowerCase()) || Boolean(pullRequest && config.all_pr_authors_since &&
+    utcTimestamp(item.created_at) >= utcTimestamp(config.all_pr_authors_since))
+}
 export function eligible(item: Document, config: Config) {
   if (item.repository_url !== `https://api.github.com/repos/${config.repository}`) throw new Stop("repository mismatch")
-  if (!config.authors.includes(item.user?.login?.toLowerCase())) throw new Stop("author not allowed")
+  if (!authorAllowed(item, config, !!item.pull_request)) throw new Stop("author or PR creation time not eligible")
   if (item.state !== "open" || item.locked) throw new Stop("item closed or locked")
 }
 
