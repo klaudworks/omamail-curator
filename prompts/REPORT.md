@@ -1,10 +1,17 @@
 # Respond
 
-Write for a busy contributor. Target 80–140 words across the public fields. The publisher supplies the stage title, opening summary, findings, one owner-labelled next step and a compact commit/automation footer. Explain the outcome in the summary rather than adding a separate status line.
+Write for busy contributors and maintainers. Target 80–140 words across the public fields. The publisher supplies the stage title, opening summary, findings, one owner-labelled next step and a compact commit/automation footer. Explain the outcome in the summary rather than adding a separate status line.
 
 1. `summary`: one sentence explaining the user-visible change and recommendation.
 2. `findings`: one to three short facts. In completeness, group all concrete missing prerequisites here with the expected evidence; a `needs-information` result gets the section **Missing prerequisites**. Final review uses **Findings** for substantive defects, unresolved verification gaps or observations supporting readiness.
 3. `next_step`: name the owner and give one concrete action with a completion condition and where to report it. Refer to the findings instead of repeating their full details. Avoid vague requests such as "verify this" or "add evidence".
+
+Make final-review findings useful for a maintainer's decision:
+
+- Lead with the concrete user-visible consequence. Use meaningful before/after values instead of vague descriptions such as "a short delay"; distinguish a configured threshold from measured end-to-end behavior.
+- State when the benefit and cost apply, including important exceptions. A fix for an extreme workload may also affect ordinary use; make that distinction explicit when material. Preserve these conditions even if the word target must stretch.
+- Separate verified behavior, author-reported measurements and your judgment. Passing tests establish the exercised behavior, not that its cost is acceptable. Avoid calling a tradeoff "minor" or "reasonable" without explaining the basis.
+- When the source or discussion already identifies a relevant less-disruptive alternative, mention it briefly if it helps weigh the change, and say whether it was evaluated. An untested alternative is a possibility, not a proven improvement or an automatic new requirement.
 
 For a verification gap, state the scenario and expected assertion or capture so the contributor's agent can implement it. Follow [EVIDENCE.md](EVIDENCE.md); never assign mandatory hands-on testing to the contributor.
 
