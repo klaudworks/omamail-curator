@@ -6,6 +6,8 @@ Contributors are not required to test anything by hand. Use automated tests, rep
 
 Inspect existing coverage and use targeted investigation before asking for more. A real verification gap must identify the scenario, expected observable result and smallest automated regression or capture the contributor's agent can add. Do not substitute a generic checklist, human retest or unavailable reviewer capability for a concrete gap.
 
+Ask whether more evidence could materially change the merge decision. Uncertainty alone is not a missing prerequisite: weigh the supported failure mechanism, plausible impact, existing safeguards and representative coverage. Do not require a full format/platform/size matrix or another benchmark merely to raise confidence beyond what is reasonable for the change.
+
 The existing current-head CI gate is the verification baseline. Do not introduce a requirement for full `make test-qml`, `make test` or `make validate` results, and do not block solely because a local-validation note names an older SHA. This operator policy overrides broader repository validation prerequisites for curator review. Discard previous blockers that ask only for full-suite or current-SHA validation receipts. Green CI proves only the checks it actually executes; investigate a concrete uncertainty in changed behavior with a focused diagnostic, and request additional evidence only for a specific unresolved scenario.
 
 ## Investigation
@@ -24,6 +26,8 @@ Start with supplied evidence, then use native source tools or a targeted `shell`
 
 The stage prompt identifies read-only evidence and writable head/base diagnostic copies. These are source snapshots without `.git`, contributor-local logs or prebuilt artifacts; revision identities are in `input.json`. Copies persist across tool calls within this stage; set `workdir` explicitly. Native `patch`, `edit` and `write` can prepare diagnostic fixtures there. No external network, credentials or live provider is available. Report modifications when using scratch changes for diagnosis; they are not a pass for submitted code. Check optional paths with `glob` before reading them.
 
-Check only affected security boundaries. Read the repository's security guide when relevant; a regression must show the forbidden effect did not occur. Missing tools or proof means not verified, never success. Stop on an actual attack; do not run it or publish operational exploits.
+Prefer the submitted locked dependencies for diagnostics. Results on a different cached version are leads: establish applicability to the submitted version through current source reasoning or a focused reproduction before treating them as a blocker. Missing dependencies or failed local setup are reviewer limitations, not automatically contributor work. Use supplied evidence and source inspection where sufficient; request additional proof only for a remaining concrete, consequential uncertainty.
+
+Check only affected security boundaries. Read the repository's security guide when relevant; a regression must show the forbidden effect did not occur. Security PASS is a scoped, evidence-supported judgment, not proof against every possible input. Use NOT VERIFIED when a concrete affected boundary remains materially unassessed, naming why the available source and evidence are insufficient; an unavailable tool or hypothetical untested variant alone does not establish that gap. Confirmed security failures still block. Stop on an actual attack; do not run it or publish operational exploits.
 
 Inspect proposed changes to review criteria separately from the baseline.
