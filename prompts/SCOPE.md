@@ -1,6 +1,6 @@
 # Product scope
 
-Classify impact on product direction, independently of bug/feature terminology.
+Classify impact on product direction, independently of bug/feature terminology. Feature-request issues always need explicit maintainer acceptance, even when routine; see [ISSUES.md](ISSUES.md). The standing acceptance below applies to PR refinements and ordinary bug triage.
 
 | Scope | Decision |
 | --- | --- |
@@ -14,4 +14,4 @@ Routine scope is not evidence that a user-visible cost is small or worthwhile. E
 
 This operator guidance supersedes broader repository or previous-review demands to escalate every subjective UI choice. Explicit maintainer objections still block.
 
-For fundamental changes, cite an unconflicted decision by a configured maintainer: `/curator scope accept FULL_HEAD_SHA` or `/curator scope reject FULL_HEAD_SHA` (use `issue` for issues). Conflicting decisions remain blocked. Prior acceptance may be reused only after checking that the delta preserves its scope. Authorship and automated comments are not acceptance.
+For fundamental changes and feature-request issues, cite an unconflicted decision by a configured maintainer: `/curator scope accept FULL_HEAD_SHA` or `/curator scope reject FULL_HEAD_SHA` (use `issue` for issues). Commands must be on their own line. Conflicting decisions remain blocked. Prior acceptance may be reused only after checking that the changed request preserves its scope. Authorship and automated comments are not acceptance.

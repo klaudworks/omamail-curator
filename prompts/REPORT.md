@@ -3,7 +3,7 @@
 Write for busy contributors and maintainers. Target 80–140 words across the public fields. The publisher supplies the stage title, opening summary, findings, one owner-labelled next step and a compact commit/automation footer.
 
 1. `summary`: one sentence explaining the user-visible change and recommendation.
-2. `findings`: one to three short facts. In completeness, group all concrete missing prerequisites here with the expected evidence; a `needs-information` result gets the section **Missing prerequisites**. Final review uses **Findings** for substantive defects, unresolved verification gaps or observations supporting readiness.
+2. `findings`: one to three short facts. In completeness, group all concrete missing prerequisites here with the expected evidence; a `needs-information` result gets the section **Missing prerequisites** for PRs or **Missing information** for issues. Final review uses **Findings** for substantive defects, unresolved verification gaps or observations supporting readiness.
 3. `next_step`: name the owner and give one concrete action with a completion condition and where to report it. Refer to the findings instead of repeating their full details. Avoid vague requests such as "verify this" or "add evidence".
 
 Make final-review findings useful for a maintainer's decision:
@@ -32,6 +32,6 @@ Return only one JSON object, without fences, with exactly these keys:
 | `scope_decisions` | Supporting maintainer comment IDs when explicit acceptance is needed; otherwise `[]` |
 | `malicious` | Boolean; if true, state must be `blocked` |
 
-`continue` is completeness-stage only, for complete PRs. `ready` is final-stage only, requires security `PASS` and no blockers. Neither applies to issues. Use `needs-information` for missing proof, `needs-maintainer-decision` for a fundamental direction decision or explicit objection, and `blocked` for a demonstrated defect/attack.
+`continue` is completeness-stage only, for complete PRs. `ready` is final-stage only, requires security `PASS` and no blockers. Neither applies to issues. Use `needs-information` for missing proof or necessary reproduction details, `needs-maintainer-decision` for feature-issue scope acceptance, a fundamental direction decision or explicit objection, and `blocked` for a demonstrated defect/attack. Issues use the heading **Automated issue triage**; describe an actionable report as a handoff, never as PR approval.
 
 Missing proof normally gives the author the next step; a product decision or ready review gives it to a maintainer. The publisher tags the configured maintainers for that next step; do not hardcode a person's name or repeat the mentions. Use `none` only when no human action is needed. A missing-information update is not a final review; do not imply otherwise. Do not include section headings in the fields—the publisher supplies them.

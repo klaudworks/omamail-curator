@@ -1,6 +1,7 @@
 {
   "repository": "huacnlee/omamail",
   "authors": ["your-github-login"],
+  "all_issue_authors": false,
   "maintainers": ["your-github-login", "huacnlee"],
   "publisher_login": "your-github-login",
   "token_file": "/absolute/private/path/github.token",

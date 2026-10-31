@@ -5,8 +5,11 @@ export class Stop extends Error {}
 export class Pause extends Error {}
 export type Phase = "completeness" | "final"
 export const CONTRACT_VERSION = 12
+export const ISSUE_CONTRACT_VERSION = 13
+export const contractVersion = (pullRequest: boolean) => pullRequest ? CONTRACT_VERSION : ISSUE_CONTRACT_VERSION
 export const MODELS = { completeness: "openai/gpt-6.1-terra#medium", final: "openai/gpt-6.1-sol#xhigh" }
 export const LABELS = new Set(["needs-information", "needs-maintainer-decision", "review-ready"])
+export const ISSUE_LABELS = { bug: "bug", feature: "enhancement", disputed: "question", support: "question" } as const
 
 // Compatible with the existing Python checkpoints, including ensure_ascii.
 export function canonical(value: unknown): string {
@@ -22,6 +25,7 @@ export const digest = (value: unknown) => createHash("sha256").update(canonical(
 export const ConfigSchema = Schema.Struct({
   repository: Schema.String, authors: Schema.Array(Schema.String), maintainers: Schema.Array(Schema.String),
   all_pr_authors_since: Schema.optional(Schema.String),
+  all_issue_authors: Schema.optional(Schema.Boolean),
   tracked_prs: Schema.optional(Schema.Array(Schema.Int)),
   publisher_login: Schema.String, token_file: Schema.String, state_dir: Schema.String,
   transport: Schema.Array(Schema.String), pipelines: Schema.Array(Schema.Struct({ path: Schema.String, jobs: Schema.Array(Schema.String) })),
@@ -69,12 +73,12 @@ export type Document = Record<string, any>
 export function authorAllowed(item: Document, config: Config, pullRequest: boolean) {
   const login = item.user?.login
   if (typeof login !== "string" || !login) return false
-  return config.authors.includes(login.toLowerCase()) || Boolean(pullRequest && (config.tracked_prs?.includes(item.number) ||
+  return config.authors.includes(login.toLowerCase()) || (!pullRequest && config.all_issue_authors === true) || Boolean(pullRequest && (config.tracked_prs?.includes(item.number) ||
     config.all_pr_authors_since && utcTimestamp(item.created_at) >= utcTimestamp(config.all_pr_authors_since)))
 }
 export function eligible(item: Document, config: Config) {
   if (item.repository_url !== `https://api.github.com/repos/${config.repository}`) throw new Stop("repository mismatch")
-  if (!authorAllowed(item, config, !!item.pull_request)) throw new Stop("author or PR creation time not eligible")
+  if (!authorAllowed(item, config, !!item.pull_request)) throw new Stop("item not enrolled for this author")
   if (item.state !== "open" || item.locked) throw new Stop("item closed or locked")
 }
 

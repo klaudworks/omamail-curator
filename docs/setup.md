@@ -51,6 +51,7 @@ Enrollment is controlled by:
 - `authors`: allowed authors of issues and PRs.
 - `all_pr_authors_since`: optional UTC creation-time cutoff admitting new PRs from any author.
 - `tracked_prs`: optional PR numbers to enroll older contributions explicitly.
+- `all_issue_authors`: optional boolean; `true` enrolls all open issues, including the backlog, from any identified author. PR enrollment is unchanged. For a staged rollout, first use a private config copy with this enabled and `--item NUMBER`, then enable it in the scheduled config after verifying publication and unchanged-input reuse.
 
 Run the isolation checks linked above, then check an eligible PR from the controller checkout:
 

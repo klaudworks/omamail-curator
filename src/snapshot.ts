@@ -56,7 +56,8 @@ export async function snapshot(api: GitHub, config: Config, checkpoints: Checkpo
 export type Snapshot = Awaited<ReturnType<typeof snapshot>>
 
 export function validateScope(result: Assessment, snap: Snapshot, config: Config, checkpoints: Checkpoints): Assessment {
-  if (!["continue", "ready", "handoff", "needs-information", "needs-maintainer-decision"].includes(result.state)) return result
+  const featureIssue = !snap.pr && result.kind === "feature"
+  if (result.malicious || !featureIssue && !["continue", "ready", "handoff", "needs-information", "needs-maintainer-decision"].includes(result.state)) return result
   const head = snap.pr?.head.sha ?? "issue", previous = snap.previous ?? {}
   const prior = new Set(previous.assessment?.scope_decisions ?? []), accepted = new Set<number>(), rejected = new Set<number>()
   for (const event of snap.events) {
@@ -65,10 +66,10 @@ export function validateScope(result: Assessment, snap: Snapshot, config: Config
     if (lines.includes(`/curator scope accept ${head}`) || prior.has(event.id) && lines.includes(`/curator scope accept ${previous.head}`)) accepted.add(event.id)
     if (lines.includes(`/curator scope reject ${head}`) || previous.head && lines.includes(`/curator scope reject ${previous.head}`)) rejected.add(event.id)
   }
-  const needsAcceptance = result.scope !== "routine" && !result.scope_decisions.some(id => accepted.has(id))
+  const needsAcceptance = (featureIssue || result.scope !== "routine") && !result.scope_decisions.some(id => accepted.has(id))
   if (!rejected.size && !needsAcceptance) return result
-  const blocker = rejected.size ? "A maintainer has objected to this direction; resolve that objection first." : "A maintainer needs to confirm this change to the product's direction."
+  const blocker = rejected.size ? "A maintainer has objected to this direction; resolve that objection first." : featureIssue ? "A maintainer needs to decide whether this feature request is within scope." : "A maintainer needs to confirm this change to the product's direction."
   return { ...result, state: "needs-maintainer-decision", findings: result.state === "needs-maintainer-decision" ? result.findings : [blocker, ...result.findings.slice(0, 2)],
-    next_step: { owner: "maintainer", action: rejected.size ? "Resolve the recorded objection and state whether this direction is accepted." : "Confirm whether this product-direction change should proceed, and record the scope decision." },
+    next_step: { owner: "maintainer", action: rejected.size ? "Resolve the recorded objection and state whether this direction is accepted." : featureIssue ? "Decide whether this feature belongs in Omamail; record /curator scope accept issue or /curator scope reject issue in a comment." : "Confirm whether this product-direction change should proceed, and record the scope decision." },
     blockers: result.blockers.includes(blocker) ? result.blockers : [...result.blockers, blocker] }
 }

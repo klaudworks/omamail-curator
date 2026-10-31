@@ -8,7 +8,7 @@ import { Publisher, type Provenance } from "./publisher.ts"
 import { snapshot, validateScope } from "./snapshot.ts"
 import { collect } from "./evidence.ts"
 import { run } from "./io.ts"
-import { CONTRACT_VERSION, MODELS, Pause, Stop, assessment, eligible, readConfig, type Config, type Phase, type Assessment } from "./policy.ts"
+import { contractVersion, MODELS, Pause, Stop, assessment, eligible, readConfig, type Config, type Phase, type Assessment } from "./policy.ts"
 
 async function model(config: Config, files: Record<string, string>, phase: Phase, logdir: string, completeness?: Assessment) {
   const response = await run([...config.transport], { input: JSON.stringify({ phase, host_time: Date.now() / 1000, files, completeness }) })
@@ -34,7 +34,7 @@ export async function processItem(api: GitHub, config: Config, checkpoints: Chec
     throw error
   }
   if (gateOnly) return { number, gate: "eligible", ci: snap.ci, models_started: 0 }
-  if (snap.previous?.contract_version === CONTRACT_VERSION && snap.previous.fingerprint === snap.fingerprint) {
+  if (snap.previous?.contract_version === contractVersion(!!snap.pr) && snap.previous.fingerprint === snap.fingerprint) {
     if (dryRun) return { number, state: "unchanged", models_started: 0 }
     return { ...await publisher.publish(snap, snap.previous.assessment, snap.previous.phase, snap.previous.sessions), reused: true, models_started: 0 }
   }

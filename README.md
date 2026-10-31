@@ -7,9 +7,9 @@ Every update has a stage title, a short summary, missing prerequisites or review
 ## How it works
 
 1. Find eligible items, oldest first. PR checks must pass on the current commit.
-2. Check completeness and product fit. Small refinements can proceed; fundamental direction changes need a maintainer decision.
+2. Triage issues as bugs (`bug`), feature requests (`enhancement`), or support/disputed behavior (`question`). Ask only for missing information needed to reproduce or investigate a bug. Tag configured maintainers for every feature-request scope decision. Small PR refinements can proceed; fundamental direction changes need a maintainer decision.
 3. When a PR is complete, use a fresh agent for final review.
-4. Post one comment per completed assessment and update the appropriate label. Unchanged polling checks reuse previous work without posting again.
+4. Post one comment per completed assessment and update category/status labels. Unchanged polling checks reuse previous work without posting again; new answers trigger reassessment.
 
 Reviews run through OpenCode. The curator posts normal comments and labels items. Maintainers control approvals, closure and merging.
 
