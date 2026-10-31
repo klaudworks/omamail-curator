@@ -12,7 +12,7 @@ This stage checks prerequisites. Do not run repository-wide builds, test suites,
 
 ## Final stage
 
-Independently inspect the current diff and evidence. The completeness assessment and prior reviews are context, not proof. Focus on substantive deltas while verifying current-revision claims.
+Independently inspect the current diff and evidence. The completeness assessment and prior reviews are context, not proof. Focus on substantive deltas while verifying current-revision claims. For UI changes, follow [UI.md](UI.md)'s visual inspection workflow alongside focused interaction tests.
 
 Use focused diagnostics for concrete uncertainties left by source, supplied evidence and current-head CI. Inspect a command's prerequisites before running it: a UI-test target may first compile the entire backend. Run individual tests/functions or minimal reproductions. Do not execute full repository suites such as `make test-qml`, `make test` or `make validate`, or make their absence a review blocker. Follow the verification policy in [EVIDENCE.md](EVIDENCE.md).
 

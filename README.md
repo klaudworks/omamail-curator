@@ -1,4 +1,4 @@
-# Omamail curator
+# Automated issue triage and PR review for Omamail
 
 Helps maintainers of [Omamail](https://github.com/huacnlee/omamail) understand issues and review pull requests. It checks what's missing, investigates relevant evidence, and leaves a short comment with the next useful action.
 
