@@ -51,6 +51,7 @@ export async function processItem(api: GitHub, config: Config, checkpoints: Chec
     const sessions = [completeness.provenance]
     if (result.state === "continue") {
       if (!snap.pr) throw new Pause("Issue incorrectly requested PR review")
+      if (!dryRun) await publisher.completenessPassed(snap, result, completeness.provenance)
       await publisher.fresh(snap)
       const final = await model(config, files, "final", logdir, result)
       if (final.provenance.session === completeness.provenance.session) throw new Pause("Final review must use a fresh session")

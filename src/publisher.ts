@@ -15,6 +15,12 @@ export class Publisher {
     eligible(item, this.config)
     if (item.labels.some((label: Document) => label.name === "review-ready")) await this.api.mutate("DELETE", `/issues/${item.number}/labels/review-ready`)
   }
+  async completenessPassed(snap: Snapshot, raw: Assessment, session: Provenance) {
+    const result = validateScope(assessment(raw, "completeness"), snap, this.config, this.checkpoints)
+    if (!snap.pr || result.state !== "continue" || session.model !== MODELS.completeness || session.verified_tools !== true || !session.session?.startsWith("ses_")) throw new Stop("Label transition requires verified passing PR completeness")
+    const current = await this.fresh(snap)
+    if (current.item.labels.some((label: Document) => label.name === "needs-information")) await this.api.mutate("DELETE", `/issues/${snap.item.number}/labels/needs-information`)
+  }
   async publish(snap: Snapshot, raw: Assessment, phase: Phase, sessions: Provenance[]) {
     let result = assessment(raw, phase)
     const expected = [MODELS.completeness, ...(phase === "final" ? [MODELS.final] : [])]
