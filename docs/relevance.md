@@ -6,7 +6,7 @@ With `decision_token_file` configured, changed inputs are compared with the **la
 
 ## Routing
 
-- Use `jev-1.14.0` at the official TypeSafe `/v1/systemone` endpoint. Ask positively whether another assessment can reasonably be skipped. Skip when `P(can_skip) > 0.60`; exactly 0.60 or lower proceeds to review. This same threshold applies to ordinary updates and verified branch-sync merges.
+- Use `jev-1.14.0` at the official TypeSafe `/v1/systemone` endpoint. Ask positively whether another assessment can reasonably be skipped. Skip when `P(can_skip) > 0.75`; exactly 0.75 or lower proceeds to review. This same threshold applies to ordinary updates and verified branch-sync merges.
 - New or removed linked evidence goes to the full reviewer, including screenshots/videos. Jev never assumes it has inspected a URL's contents. Experimental image support is not used.
 - Behavioral contributor edits, binary changes and incomplete source collection go to review. Nonfunctional documentation is eligible for a decision, not automatically skipped.
 - For branch-sync merges, independently reproduce the two-parent merge using its merge base, confirm the other parent belongs to the target branch, and compare the computed tree with the actual commit. Extra edits and conflict-resolution changes fail this check. Supply incoming upstream changes and the full current contribution diff so Jev can judge interactions.
@@ -19,7 +19,7 @@ The transport body is capped at 96,000 UTF-8 bytes; the API's default 32k-per-qu
 
 Private baselines and decisions live under `state_dir/relevance/`, anchored to the current signed public status comment. Cache each successful skip by the baseline/current fingerprints, model, questions and threshold, so repeated polling makes zero model calls. Changing the question or threshold invalidates only cached skip decisions, preserving full assessments. Removing or changing the signed anchor invalidates the baseline. Skipping never advances the reviewed source SHA, marks a new commit reviewed, or grants readiness; new head/base changes remove stale `review-ready`.
 
-Save completed assessments before publication so a failed comment/label request can reuse model work. Discover signed comments before retrying writes. Initial issue triage always posts one comment. For issue follow-ups, explicitly ask whether posting another comment can reasonably be skipped, comparing the new assessment with the latest public one. The same `P(can_skip) > 0.60` rule suppresses the comment; exactly 0.60 or lower publishes it. A changed category/state/owner/disposition publishes directly. PR assessments retain one-comment-per-assessment history.
+Save completed assessments before publication so a failed comment/label request can reuse model work. Discover signed comments before retrying writes. Initial issue triage always posts one comment. For issue follow-ups, explicitly ask whether posting another comment can reasonably be skipped, comparing the new assessment with the latest public one. The same `P(can_skip) > 0.75` rule suppresses the comment; exactly 0.75 or lower publishes it. A changed category/state/owner/disposition publishes directly. PR assessments retain one-comment-per-assessment history.
 
 ## Initial evaluation
 
@@ -28,3 +28,5 @@ A small historical discussion replay used ten examples during initial prompt ref
 Replaying those same sixteen discussion updates with the positive `can_skip > 0.60` rule skipped nine and retained seven. The additional skip was a short successful-retest confirmation on an already-verified fix, previously categorized as new evidence. Diagnostic findings, changed requirements, maintainer direction and the new-provider report still reached review. This reused sample is a regression comparison, not a new held-out accuracy measurement.
 
 With the positive question, the real independent branch-sync scored 0.84 for skipping; a synthetic interacting image-limit change scored 0.29 and reached review. The comment decision scored 0.99 for skipping an identical assessment and 0.06 for a synthetic useful correction. Boundary checks confirmed that 0.60 publishes/reviews and 0.61 skips.
+
+The operator subsequently raised the shared threshold to strictly above 0.75. Applying it to the saved scores leaves these replay/contrast outcomes unchanged. Updated boundary checks confirm that 0.75 reviews/publishes and 0.76 skips.

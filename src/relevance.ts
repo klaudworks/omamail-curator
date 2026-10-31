@@ -10,7 +10,7 @@ import type { Checkpoints } from "./state.ts"
 import type { Provenance } from "./publisher.ts"
 
 export const DECISION_MODEL = "jev-1.14.0"
-export const CAN_SKIP_THRESHOLD = 0.6
+export const CAN_SKIP_THRESHOLD = 0.75
 const VERSION = 1
 // Bound transport size without guessing an undocumented tokenizer. The default
 // API token limits remain authoritative: a context rejection routes to review.
