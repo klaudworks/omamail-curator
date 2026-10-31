@@ -4,12 +4,24 @@ import { createHash, randomUUID } from "node:crypto"
 import { homedir } from "node:os"
 import path from "node:path"
 import { Effect, References, Schema } from "effect"
+import type { AssistantTool } from "@opencode/schema/session-message"
 import { review } from "../reviewer/host.ts"
 import { MODELS, Pause, assessment } from "./policy.ts"
 import { guides, SYSTEM } from "./prompts.ts"
 
 const Request = Schema.Struct({ phase: Schema.Literals(["completeness", "final"]), host_time: Schema.Number,
   files: Schema.Record(Schema.String, Schema.String), completeness: Schema.optional(Schema.Unknown) })
+
+export function expectedSearchMiss(tool: AssistantTool, root: string): boolean {
+  if (!["grep", "glob"].includes(tool.name) || tool.state.status !== "error") return false
+  const { input, error } = tool.state
+  if (typeof input.path !== "string" || !input.path || input.path.startsWith("~")) return false
+  const absolute = path.resolve(root, "evidence", input.path)
+  // V2.2.1 reports ENOENT during search-root lookup as a tool error. This
+  // expected discovery result is not an executor failure; retain it in events.
+  return ["evidence", "work"].some(name => absolute.startsWith(`${root}/${name}/`)) &&
+    error.type === "tool.execution" && error.message === `Search path does not exist: ${input.path}`
+}
 
 export async function inventory(root: string, previous?: Readonly<Record<string, string>>, relative = ""): Promise<Record<string, string>> {
   const result: Record<string, string> = Object.create(null)
@@ -93,7 +105,8 @@ export async function guest(input: unknown) {
     const pages = new Set(tools.filter(t => t.name === "curator_guide" && t.state.status === "completed").map(t => (t.state as { input: Record<string, unknown> }).input.page))
     const required = ["REVIEW.md", "REPORT.md", item.pr ? "PRS.md" : "ISSUES.md", ...(item.pr ? ["EVIDENCE.md"] : [])]
     if (required.some(page => !pages.has(page))) throw new Pause("Required runtime guides were not read")
-    if (tools.some(t => t.state.status !== "completed") && ["continue", "ready"].includes(output.state)) throw new Pause("Tool failure cannot yield a passing gate")
+    const failed = tools.filter(t => t.state.status !== "completed" && !expectedSearchMiss(t, root))
+    if (failed.length && ["continue", "ready"].includes(output.state)) throw new Pause(`Tool failure cannot yield a passing gate: ${failed.map(t => t.name).join(", ")}`)
     const after = await inventory(work, before)
     const modified = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(name => before[name] !== after[name]).sort()
     return { ok: true, model: expected, session: result.session.id, assessment: output, tool_count: tools.length,
