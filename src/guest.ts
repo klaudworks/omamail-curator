@@ -107,7 +107,8 @@ export async function guest(input: unknown) {
     if (required.some(page => !pages.has(page))) throw new Pause("Required runtime guides were not read")
     if (!item.pr) {
       const route = output.kind === "bug" ? "ISSUE-BUGS.md" : output.kind === "feature" ? output.scope === "routine" ? "ISSUE-CHANGES.md" : "ISSUE-FEATURES.md" : "ISSUE-SUPPORT.md"
-      if (!pages.has(route) || !pages.has("EVIDENCE.md") || output.issue_decision && !pages.has("SCOPE.md")) throw new Pause("Required issue type/evidence guidance was not read")
+      const missing = [route, "EVIDENCE.md", ...(output.issue_decision ? ["SCOPE.md"] : [])].filter(page => !pages.has(page))
+      if (missing.length) throw new Pause(`Required issue guidance was not read: ${missing.join(", ")}`)
     }
     const failed = tools.filter(t => t.state.status !== "completed" && !expectedSearchMiss(t, root))
     if (failed.length && ["continue", "ready"].includes(output.state)) throw new Pause(`Tool failure cannot yield a passing gate: ${failed.map(t => t.name).join(", ")}`)
