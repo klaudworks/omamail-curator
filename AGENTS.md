@@ -7,6 +7,7 @@ This file guides coding agents working on the curator. Runtime reviewers start a
 - Keep instructions lean: link to the relevant guidance instead of repeating it. Read only the documents needed for the task.
 - Keep controller authority outside model output. Route GitHub mutations through the narrow publisher; fail closed on unknown author, CI, freshness, model or tool state.
 - Never commit credentials, host configuration, transcripts or contributor artifacts.
+- Deploy through [maintenance](deploy/README.md#maintenance-and-recovery), holding the sweep lock while leaving the timer active. Never stop the timer as a deployment step.
 
 | Task | Start here |
 | --- | --- |

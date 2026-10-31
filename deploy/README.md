@@ -17,4 +17,26 @@ bun src/controller.ts --config /private/config.json --item NUMBER --dry-run
 
 To include new PRs from every author, set `all_pr_authors_since` in the private controller config to a UTC ISO timestamp. PRs created at or after that instant become eligible, including their subsequent updates. Enroll individual older PRs for ongoing follow-up with `tracked_prs`, an array of positive PR numbers. Other older PRs and issues still use `authors`; updating or reopening an older PR does not enroll it. Omit both settings for authors-only operation. All other gates, including current-head CI, still apply.
 
-Render `@CHECKOUT@`, `@BUN@` and `@CONFIG@` in [omamail-curator.service.in](omamail-curator.service.in), install it with the timer and enable user lingering. The timer runs every 5 minutes, with sequential oldest-first processing. Pause it with `systemctl --user stop omamail-curator.timer`. Logs and transcripts belong in private state storage. An old standalone reviewer OpenCode service is no longer required; stop/disable only that dedicated service after migrating.
+Render `@CHECKOUT@`, `@BUN@` and `@CONFIG@` in [omamail-curator.service.in](omamail-curator.service.in), install it with the timer and enable user lingering. The timer runs every 5 minutes, with sequential oldest-first processing. Logs and transcripts belong in private state storage. An old standalone reviewer OpenCode service is no longer required; stop/disable only that dedicated service after migrating.
+
+## Maintenance and recovery
+
+Keep the timer active during deployments. Run the whole controller/guest update inside the shared sweep lock using a controller-local script:
+
+```sh
+bun deploy/maintenance.ts --config /private/config.json -- /bin/bash /private/deploy.sh
+```
+
+The helper starts an enabled timer if previously stopped, then runs the command under the controller's existing `flock`. It waits for any current sweep; scheduled sweeps skip while maintenance owns the lock. No extra service or recovery timer is installed. The kernel releases the lock when the command and inheriting children exit, including after failure. If SSH disconnects and the command survives, it retains the lock until it exits; the timer stays active throughout. Keep the deployment command in the foreground and check its result and deployment integrity before calling an update successful. Normal processing resumes on the next five-minute tick after the lock is released.
+
+`systemctl --user stop omamail-curator.timer` is an indefinite administrative pause, not a deployment step. `enabled` starts a unit when its user manager starts; it does not undo an explicit stop when a machine wakes or reconnects. `Persistent=true` catches missed calendar firings only once the timer is active. To resume an intentional pause, use `systemctl --user enable --now omamail-curator.timer` and verify its active state and the next sweep result.
+
+## Moving to another server
+
+The repository contains the controller/reviewer code and scheduler templates, but does not yet provision a fresh host or VM end to end. The controller runs on Linux; the current Mac/OrbStack operator access is not required by the runtime. A move currently needs:
+
+- The pinned source and dependencies, the host/guest tools above, and the rendered systemd service/timer with user lingering.
+- Private controller configuration, GitHub authentication and the existing checkpoint signing key. Update host-specific paths and preserve enrollment settings; the signing key lets the new controller recognize previous public assessments.
+- The reviewer VM disk and its host launch/network metadata, or a separately provisioned equivalent. `vm-bridge.ts` expects `current.json`, a run directory with `launch.json`, SSH identity/known hosts and proxy configuration; adjust absolute paths and QEMU arguments for the destination. Model authentication and diagnostic toolchains belong in the guest.
+
+Quiesce the old controller and VM before transferring their state, activate scheduling on only one controller, and verify CI gating, a real isolated reviewer run and signed publication/checkpoint reuse on the destination. Fresh-host bootstrap and automated backup/restore are still manual deployment work; migration has not been validated on a second server.
