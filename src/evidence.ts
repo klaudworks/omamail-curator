@@ -3,6 +3,7 @@ import path from "node:path"
 import { Pause, type Config, type Document } from "./policy.ts"
 import { checked, bounded } from "./io.ts"
 import { Checkpoints } from "./state.ts"
+import type { GitHub } from "./github.ts"
 import type { Snapshot } from "./snapshot.ts"
 
 const env = { PATH: process.env.PATH, HOME: "/nonexistent", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_TERMINAL_PROMPT: "0", LANG: "C.UTF-8" }
@@ -27,13 +28,19 @@ async function attachment(url: string) {
   throw new Error("Too many attachment redirects")
 }
 
-export async function collect(snap: Snapshot, config: Config, directory: string, checkpoints: Checkpoints) {
+export async function collect(snap: Snapshot, config: Config, directory: string, checkpoints: Checkpoints, api: GitHub) {
   const repo = path.join(directory, "source.git"), pr = snap.pr
   await command(["git", "-c", "core.hooksPath=/dev/null", "init", "--bare", repo])
   let revisions = pr ? { head: validSHA(pr.head.sha), base: validSHA(pr.base.sha) } : { head: "HEAD", base: "HEAD" }
+  let comparisonBase = revisions.base
+  if (pr) {
+    const comparison = await api.get(`/compare/${revisions.base}...${revisions.head}`)
+    if (comparison.base_commit?.sha !== revisions.base) throw new Pause("Unexpected PR comparison base")
+    comparisonBase = validSHA(comparison.merge_base_commit?.sha)
+  }
   const fetchSource = (sha: string) => command(["git", "-c", "core.hooksPath=/dev/null", "--git-dir", repo, "fetch", "--depth=1", `https://github.com/${config.repository}.git`, sha])
-  for (const sha of new Set(Object.values(revisions))) await fetchSource(sha)
-  if (!pr) { const sha = validSHA((await command(["git", "--git-dir", repo, "rev-parse", "FETCH_HEAD"])).toString().trim()); revisions = { head: sha, base: sha } }
+  for (const sha of new Set([...Object.values(revisions), comparisonBase])) await fetchSource(sha)
+  if (!pr) { const sha = validSHA((await command(["git", "--git-dir", repo, "rev-parse", "FETCH_HEAD"])).toString().trim()); revisions = { head: sha, base: sha }; comparisonBase = sha }
   const files: Record<string, string> = {}, omitted: string[] = [], executables: string[] = []
   for (const [name, sha] of Object.entries(revisions)) {
     // Enumerate tree records without checking out, extracting archives or following
@@ -59,15 +66,17 @@ export async function collect(snap: Snapshot, config: Config, directory: string,
     if (offset !== raw.length) throw new Pause("Unexpected source blob data")
   }
   const diffArgs = ["git", "--git-dir", repo, "diff", "--no-ext-diff", "--no-textconv"]
-  const diff = await command([...diffArgs, revisions.base, revisions.head])
+  // GitHub PRs compare head against its merge base, not today's target tip.
+  // Keep base/ at the target revision for accepted repository guidance.
+  const diff = await command([...diffArgs, comparisonBase, revisions.head])
   if (diff.length > 4 * 1024 * 1024) throw new Pause("Diff exceeds bounded evidence ingestion")
   files["diff.patch"] = diff.toString("base64")
-  const paths = (await command(["git", "--git-dir", repo, "diff", "--name-only", "-z", revisions.base, revisions.head])).toString().split("\0").filter(Boolean)
+  const paths = (await command(["git", "--git-dir", repo, "diff", "--name-only", "-z", comparisonBase, revisions.head])).toString().split("\0").filter(Boolean)
   snap.criteria_changed = paths.some(p => p.endsWith("AGENTS.md") || p.endsWith("CONTRIBUTING.md") || p.startsWith(".opencode/"))
   const events = snap.events.filter(e => !checkpoints.decode(e, snap.item.number))
   const context: Document = { item: Object.fromEntries(["number", "title", "body", "html_url", "user"].map(k => [k, snap.item[k] ?? null])),
     eligibility: { repository: config.repository, opener_verified: true, state: "open", draft: pr ? false : null, ci_gate: pr ? "passed" : "not applicable to issues" },
-    revisions, pr: !!pr, ci: snap.ci, discussion: events, previous: snap.previous, changed_files: paths, criteria_changed: snap.criteria_changed,
+    revisions, comparison: { base: comparisonBase, head: revisions.head, path: "diff.patch" }, pr: !!pr, ci: snap.ci, discussion: events, previous: snap.previous, changed_files: paths, criteria_changed: snap.criteria_changed,
     omitted_source: omitted, assets: [], maintainers: config.maintainers }
   const previousHead = snap.previous?.head
   if (pr && previousHead && previousHead !== revisions.head) {

@@ -44,7 +44,7 @@ export async function processItem(api: GitHub, config: Config, checkpoints: Chec
   await mkdir(logdir, { recursive: true, mode: 0o700 })
   const temp = await mkdtemp(path.join(logdir, "evidence-"))
   try {
-    const files = await collect(snap, config, temp, checkpoints)
+    const files = await collect(snap, config, temp, checkpoints, api)
     await publisher.fresh(snap)
     const completeness = await model(config, files, "completeness", logdir)
     let result = validateScope(completeness.result, snap, config, checkpoints), phase: Phase = "completeness"
