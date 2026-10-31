@@ -24,12 +24,11 @@ export class Publisher {
     const n = snap.item.number, sha = snap.pr?.head.sha ?? null
     if (["continue", "ready"].includes(result.state) && !snap.pr) throw new Stop("issue cannot become PR-ready")
     const criteriaChanged = snap.criteria_changed ?? snap.previous?.criteria_changed ?? false
-    const titles = { continue: "Ready for final review", "needs-information": "Needs information", "needs-maintainer-decision": "Needs a product decision", blocked: "Blocked", ready: "Ready for maintainer review", handoff: "Ready for next steps", support: "Suggested next step", "verified-fixed": "The fix is verified" }
     const receipt = sha ? `[Commit ${sha.slice(0, 7)}](https://github.com/${this.config.repository}/commit/${sha})` : ""
     const heading = phase === "final" ? "Automated review" : "Automated completeness check"
     let owner = { author: "Author", maintainer: "Maintainer", none: "No action required" }[result.next_step.owner]
     if (result.next_step.owner === "maintainer") owner += ` (${this.config.maintainers.map(login => `@${login}`).join(" or ")})`
-    const report = `## ${heading}\n\n**${titles[result.state]}**\n\n**Summary:** ${result.summary}\n\n**Findings**\n${result.findings.map(f => "- " + f).join("\n")}\n\n**Next step — ${owner}:** ${result.next_step.action}\n\n**Security: ${result.security}**${receipt ? " · " + receipt : ""}\n\n_Automated by [omamail-curator](https://github.com/klaudworks/omamail-curator)._`
+    const report = `## ${heading}\n\n**Summary:** ${result.summary}\n\n**Findings**\n${result.findings.map(f => "- " + f).join("\n")}\n\n**Next step — ${owner}:** ${result.next_step.action}\n\n**Security: ${result.security}**${receipt ? " · " + receipt : ""}\n\n_Automated by [omamail-curator](https://github.com/klaudworks/omamail-curator)._`
     const payload = { type: "status", contract_version: CONTRACT_VERSION, repository: this.config.repository, number: n, fingerprint: snap.fingerprint,
       head: sha, base: snap.pr?.base.sha ?? null, phase, assessment: result, sessions, criteria_changed: criteriaChanged, report_hash: digest(report) }
     const body = report + "\n\n" + this.checkpoints.encode(payload)

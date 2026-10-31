@@ -2,7 +2,7 @@
 
 Helps maintainers of [Omamail](https://github.com/huacnlee/omamail) understand issues and review pull requests. It checks what's missing, investigates relevant evidence, and leaves a short comment with the next useful action.
 
-Every update names the review stage and outcome, followed by **Summary · Findings · Next step**, naming who should act and what they should do.
+Every update names the review stage, followed by **Summary · Findings · Next step**, naming who should act and what they should do.
 
 ## How it works
 

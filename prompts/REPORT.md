@@ -1,6 +1,6 @@
 # Respond
 
-Write for a busy contributor. Target 80–140 words across the public fields. The publisher renders the review stage as the heading, then the outcome followed by **Summary → Findings → Next step**. Do not repeat the stage or outcome in the summary.
+Write for a busy contributor. Target 80–140 words across the public fields. The publisher renders the review stage as the heading, followed by **Summary → Findings → Next step**. Explain the outcome in the summary rather than adding a separate status line.
 
 1. `summary`: one sentence explaining the user-visible change and recommendation.
 2. `findings`: one to three short facts explaining the outcome or actual blockers.
