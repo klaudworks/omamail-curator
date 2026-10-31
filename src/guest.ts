@@ -3,6 +3,7 @@ import { constants } from "node:fs"
 import { createHash, randomUUID } from "node:crypto"
 import { homedir } from "node:os"
 import path from "node:path"
+import { isDeepStrictEqual } from "node:util"
 import { Effect, References, Schema } from "effect"
 import type { AssistantTool } from "@opencode/schema/session-message"
 import { review } from "../reviewer/host.ts"
@@ -15,12 +16,24 @@ const Request = Schema.Struct({ phase: Schema.Literals(["completeness", "final"]
 export function expectedSearchMiss(tool: AssistantTool, root: string): boolean {
   if (!["grep", "glob"].includes(tool.name) || tool.state.status !== "error") return false
   const { input, error } = tool.state
-  if (typeof input.path !== "string" || !input.path || input.path.startsWith("~")) return false
+  if (typeof input.path !== "string" || !input.path) return false
   const absolute = path.resolve(root, "evidence", input.path)
+  if ([root, `${root}/evidence`, `${root}/work`].includes(absolute)) return false
   // V2.2.1 reports ENOENT during search-root lookup as a tool error. This
-  // expected discovery result is not an executor failure; retain it in events.
-  return ["evidence", "work"].some(name => absolute.startsWith(`${root}/${name}/`)) &&
-    error.type === "tool.execution" && error.message === `Search path does not exist: ${input.path}`
+  // expected discovery result is not an executor failure, wherever the agent
+  // searched. The native executor already confines every search to Bubblewrap.
+  return error.type === "tool.execution" && error.message === `Search path does not exist: ${input.path}`
+}
+
+export function unresolvedTools(tools: readonly AssistantTool[], root: string): AssistantTool[] {
+  return tools.filter((tool, index) => {
+    if (tool.state.status === "completed" || expectedSearchMiss(tool, root)) return false
+    // Retain the failed event, but a successful retry of that exact invocation
+    // resolves an execution error. Permission failures and unfinished calls do not.
+    return !(tool.state.status === "error" && tool.state.error.type === "tool.execution" &&
+      tools.slice(index + 1).some(next => next.name === tool.name && next.state.status === "completed" &&
+        isDeepStrictEqual(next.state.input, tool.state.input)))
+  })
 }
 
 export async function inventory(root: string, previous?: Readonly<Record<string, string>>, relative = ""): Promise<Record<string, string>> {
@@ -110,7 +123,7 @@ export async function guest(input: unknown) {
       const missing = [route, "EVIDENCE.md", ...(output.issue_decision ? ["SCOPE.md"] : [])].filter(page => !pages.has(page))
       if (missing.length) throw new Pause(`Required issue guidance was not read: ${missing.join(", ")}`)
     }
-    const failed = tools.filter(t => t.state.status !== "completed" && !expectedSearchMiss(t, root))
+    const failed = unresolvedTools(tools, root)
     if (failed.length && ["continue", "ready"].includes(output.state)) throw new Pause(`Tool failure cannot yield a passing gate: ${failed.map(t => t.name).join(", ")}`)
     const after = await inventory(work, before)
     const modified = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(name => before[name] !== after[name]).sort()
