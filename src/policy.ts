@@ -22,6 +22,7 @@ export const digest = (value: unknown) => createHash("sha256").update(canonical(
 export const ConfigSchema = Schema.Struct({
   repository: Schema.String, authors: Schema.Array(Schema.String), maintainers: Schema.Array(Schema.String),
   all_pr_authors_since: Schema.optional(Schema.String),
+  tracked_prs: Schema.optional(Schema.Array(Schema.Int)),
   publisher_login: Schema.String, token_file: Schema.String, state_dir: Schema.String,
   transport: Schema.Array(Schema.String), pipelines: Schema.Array(Schema.Struct({ path: Schema.String, jobs: Schema.Array(Schema.String) })),
 })
@@ -34,6 +35,7 @@ function utcTimestamp(value: unknown) {
 export function readConfig(value: unknown) {
   const config = Schema.decodeUnknownSync(ConfigSchema)(value, { onExcessProperty: "error" })
   if (config.all_pr_authors_since !== undefined && !Number.isFinite(utcTimestamp(config.all_pr_authors_since))) throw new Pause("all_pr_authors_since must be a UTC ISO timestamp")
+  if (config.tracked_prs?.some(number => !Number.isSafeInteger(number) || number <= 0)) throw new Pause("tracked_prs must contain positive PR numbers")
   return config
 }
 
@@ -67,8 +69,8 @@ export type Document = Record<string, any>
 export function authorAllowed(item: Document, config: Config, pullRequest: boolean) {
   const login = item.user?.login
   if (typeof login !== "string" || !login) return false
-  return config.authors.includes(login.toLowerCase()) || Boolean(pullRequest && config.all_pr_authors_since &&
-    utcTimestamp(item.created_at) >= utcTimestamp(config.all_pr_authors_since))
+  return config.authors.includes(login.toLowerCase()) || Boolean(pullRequest && (config.tracked_prs?.includes(item.number) ||
+    config.all_pr_authors_since && utcTimestamp(item.created_at) >= utcTimestamp(config.all_pr_authors_since)))
 }
 export function eligible(item: Document, config: Config) {
   if (item.repository_url !== `https://api.github.com/repos/${config.repository}`) throw new Stop("repository mismatch")
