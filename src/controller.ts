@@ -10,8 +10,8 @@ import { collect } from "./evidence.ts"
 import { run } from "./io.ts"
 import { CONTRACT_VERSION, MODELS, Pause, Stop, assessment, eligible, readConfig, type Config, type Phase, type Assessment } from "./policy.ts"
 
-async function model(config: Config, files: Record<string, string>, phase: Phase, logdir: string, luna?: Assessment) {
-  const response = await run([...config.transport], { input: JSON.stringify({ phase, host_time: Date.now() / 1000, files, luna }) })
+async function model(config: Config, files: Record<string, string>, phase: Phase, logdir: string, completeness?: Assessment) {
+  const response = await run([...config.transport], { input: JSON.stringify({ phase, host_time: Date.now() / 1000, files, completeness }) })
   await writeFile(path.join(logdir, `${phase}-transport.log`), response.stderr)
   let result
   try { result = JSON.parse(response.stdout.toString()) } catch { throw new Pause("Guest transport returned no valid result") }
@@ -46,14 +46,14 @@ export async function processItem(api: GitHub, config: Config, checkpoints: Chec
   try {
     const files = await collect(snap, config, temp, checkpoints)
     await publisher.fresh(snap)
-    const luna = await model(config, files, "completeness", logdir)
-    let result = validateScope(luna.result, snap, config, checkpoints), phase: Phase = "completeness"
-    const sessions = [luna.provenance]
+    const completeness = await model(config, files, "completeness", logdir)
+    let result = validateScope(completeness.result, snap, config, checkpoints), phase: Phase = "completeness"
+    const sessions = [completeness.provenance]
     if (result.state === "continue") {
       if (!snap.pr) throw new Pause("Issue incorrectly requested PR review")
       await publisher.fresh(snap)
       const final = await model(config, files, "final", logdir, result)
-      if (final.provenance.session === luna.provenance.session) throw new Pause("Final review must use a fresh session")
+      if (final.provenance.session === completeness.provenance.session) throw new Pause("Final review must use a fresh session")
       result = final.result; phase = "final"; sessions.push(final.provenance)
     }
     const output = { number, phase, assessment: result, sessions }

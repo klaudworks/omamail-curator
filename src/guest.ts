@@ -9,7 +9,7 @@ import { MODELS, Pause, assessment } from "./policy.ts"
 import { guides, SYSTEM } from "./prompts.ts"
 
 const Request = Schema.Struct({ phase: Schema.Literals(["completeness", "final"]), host_time: Schema.Number,
-  files: Schema.Record(Schema.String, Schema.String), luna: Schema.optional(Schema.Unknown) })
+  files: Schema.Record(Schema.String, Schema.String), completeness: Schema.optional(Schema.Unknown) })
 
 export async function inventory(root: string, previous?: Readonly<Record<string, string>>, relative = ""): Promise<Record<string, string>> {
   const result: Record<string, string> = Object.create(null)
@@ -65,7 +65,7 @@ export async function guest(input: unknown) {
       const names = Schema.decodeUnknownSync(Schema.Array(Schema.String))(JSON.parse(await readFile(target("source-executables.json"), "utf8")))
       for (const name of names) { if (!Object.hasOwn(request.files, name)) throw new Pause("Unsafe executable manifest"); await chmod(target(name), 0o755) }
     }
-    if (request.luna) await writeFile(target("luna.json"), JSON.stringify(request.luna, null, 2))
+    if (request.completeness) await writeFile(target("completeness.json"), JSON.stringify(request.completeness, null, 2))
     for (const name of ["head", "base"]) if (Object.keys(request.files).some(f => f.startsWith(name + "/"))) await cp(target(name), path.join(work, name), { recursive: true })
     const root = `/curator-review-${randomUUID()}`
     const sandbox = { root, evidence, work, data, bun: path.dirname(path.dirname(process.execPath)),
@@ -74,7 +74,7 @@ export async function guest(input: unknown) {
     const result = await Effect.runPromise(Effect.scoped(review({ sandbox,
       database: process.env.CURATOR_DATABASE ?? path.join(homedir(), ".local/share/opencode/opencode.db"),
       guides: await guides(), system: SYSTEM, phase: request.phase, model: MODELS[request.phase],
-      prompt: `Stage: ${request.phase}. Start at REVIEW.md. Read input.json, then follow the applicable stage guide.\nEvidence root (default directory): ${root}/evidence. Writable diagnostic copies: ${root}/work/head and ${root}/work/base. These copies persist across native tool calls in this stage. Run diagnostics with shell workdir set to the appropriate copy. The VM sandbox has no network or credentials; installed Rust, Node, Bun and offscreen/software Qt tooling are available. Report diagnostic modifications and their effect on conclusions. Check optional paths with glob before read. ${request.luna ? "Luna's non-authoritative assessment is available as luna.json." : ""}`,
+      prompt: `Stage: ${request.phase}. Start at REVIEW.md. Read input.json, then follow the applicable stage guide.\nEvidence root (default directory): ${root}/evidence. Writable diagnostic copies: ${root}/work/head and ${root}/work/base. These copies persist across native tool calls in this stage. Run diagnostics with shell workdir set to the appropriate copy. The VM sandbox has no network or credentials; installed Rust, Node, Bun and offscreen/software Qt tooling are available. Report diagnostic modifications and their effect on conclusions. Check optional paths with glob before read. ${request.completeness ? "The non-authoritative completeness assessment is available as completeness.json." : ""}`,
     })).pipe(Effect.provideService(References.CurrentLoggers, new Set())), { signal: abort.signal })
     const messages = result.messages.messages
     const assistants = messages.filter(m => m.type === "assistant")
