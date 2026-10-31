@@ -1,14 +1,14 @@
 # Respond
 
-Write for a busy contributor. Target 80–140 words across the public fields. The publisher renders the review stage as the heading, followed by **Summary → Findings → Next step**. Explain the outcome in the summary rather than adding a separate status line.
+Write for a busy contributor. Target 80–140 words across the public fields. The publisher supplies the stage title, opening summary, findings, one owner-labelled next step and a compact commit/automation footer. Explain the outcome in the summary rather than adding a separate status line.
 
 1. `summary`: one sentence explaining the user-visible change and recommendation.
-2. `findings`: one to three short facts explaining the outcome or actual blockers.
-3. `next_step`: name the owner and give a concrete action with a completion condition: what to check, decide or supply, and where to report it. Avoid vague requests such as "verify this" or "add evidence".
+2. `findings`: one to three short facts. In completeness, group all concrete missing prerequisites here with the expected evidence; a `needs-information` result gets the section **Missing prerequisites**. Final review uses **Findings** for substantive defects, unresolved verification gaps or observations supporting readiness.
+3. `next_step`: name the owner and give one concrete action with a completion condition and where to report it. Refer to the findings instead of repeating their full details. Avoid vague requests such as "verify this" or "add evidence".
 
 For a verification gap, state the scenario and expected assertion or capture so the contributor's agent can implement it. Follow [EVIDENCE.md](EVIDENCE.md); never assign mandatory hands-on testing to the contributor.
 
-Follow the repository's review-writing guidance. Group related requests; keep internal workflow details, file inventories and repeated caveats out of the comment. Link evidence only when it helps someone act. Omit passed CI/check summaries: GitHub already displays them. Do not repeat the publisher's status/security/commit footer. Detailed investigation stays in private traces; do not hide real blockers for brevity.
+Follow the repository's review-writing guidance. Group related requests; keep internal workflow details, file inventories and repeated caveats out of the comment. Link evidence only when it helps someone act. Omit passed CI/check summaries: GitHub already displays them. The publisher supplies the commit reference in both PR stages and a security verdict after final-review findings only; do not repeat those fields or add a completeness-stage security verdict. Detailed investigation stays in private traces; do not hide real blockers for brevity.
 
 Return only one JSON object, without fences, with exactly these keys:
 

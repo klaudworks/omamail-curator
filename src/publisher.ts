@@ -26,9 +26,17 @@ export class Publisher {
     const criteriaChanged = snap.criteria_changed ?? snap.previous?.criteria_changed ?? false
     const receipt = sha ? `[Commit ${sha.slice(0, 7)}](https://github.com/${this.config.repository}/commit/${sha})` : ""
     const heading = phase === "final" ? "Automated review" : "Automated completeness check"
+    const findingsHeading = phase === "completeness" && result.state === "needs-information" ? "Missing prerequisites" : "Findings"
+    const security = phase === "final" ? `\n\n**Security: ${result.security}**` : ""
     let owner = { author: "Author", maintainer: "Maintainer", none: "No action required" }[result.next_step.owner]
     if (result.next_step.owner === "maintainer") owner += ` (${this.config.maintainers.map(login => `@${login}`).join(" or ")})`
-    const report = `## ${heading}\n\n**Summary:** ${result.summary}\n\n**Findings**\n${result.findings.map(f => "- " + f).join("\n")}\n\n**Next step — ${owner}:** ${result.next_step.action}\n\n**Security: ${result.security}**${receipt ? " · " + receipt : ""}\n\n_Automated by [omamail-curator](https://github.com/klaudworks/omamail-curator)._`
+    const report = [
+      `## ${heading}`,
+      result.summary,
+      `### ${findingsHeading}\n${result.findings.map(f => "- " + f).join("\n")}${security}`,
+      `### Next step\n**${owner}:** ${result.next_step.action}`,
+      [receipt, "_Automated by [omamail-curator](https://github.com/klaudworks/omamail-curator)._"].filter(Boolean).join(" · "),
+    ].join("\n\n")
     const payload = { type: "status", contract_version: CONTRACT_VERSION, repository: this.config.repository, number: n, fingerprint: snap.fingerprint,
       head: sha, base: snap.pr?.base.sha ?? null, phase, assessment: result, sessions, criteria_changed: criteriaChanged, report_hash: digest(report) }
     const body = report + "\n\n" + this.checkpoints.encode(payload)
