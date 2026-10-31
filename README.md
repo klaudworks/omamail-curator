@@ -13,7 +13,7 @@ Every update has a stage title, a short summary, missing prerequisites or review
 
 Reviews run through OpenCode. The curator posts normal comments and labels items. Maintainers control approvals, closure and merging.
 
-Implemented in TypeScript with Bun and the OpenCode V2 SDK. See [deployment and operations](deploy/README.md) to run it.
+Implemented in TypeScript with Bun and the OpenCode V2 SDK. See the [setup guide](docs/setup.md) to install and operate it.
 
 ## Find your way
 
