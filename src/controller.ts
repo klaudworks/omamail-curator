@@ -4,6 +4,7 @@ import path from "node:path"
 import { parseArgs } from "node:util"
 import { GitHub } from "./github.ts"
 import { Checkpoints } from "./state.ts"
+import { Completeness } from "./completeness.ts"
 import { Publisher, type Provenance } from "./publisher.ts"
 import { snapshot, validateScope } from "./snapshot.ts"
 import { collect } from "./evidence.ts"
@@ -24,6 +25,7 @@ async function model(config: Config, files: Record<string, string>, phase: Phase
 
 export async function processItem(api: GitHub, config: Config, checkpoints: Checkpoints, number: number, dryRun = false, gateOnly = false) {
   const publisher = new Publisher(api, config, checkpoints)
+  const passes = new Completeness(config, checkpoints)
   let snap
   try { snap = await snapshot(api, config, checkpoints, number) }
   catch (error) {
@@ -46,18 +48,20 @@ export async function processItem(api: GitHub, config: Config, checkpoints: Chec
   try {
     const files = await collect(snap, config, temp, checkpoints, api)
     await publisher.fresh(snap)
-    const completeness = await model(config, files, "completeness", logdir)
+    const retained = await passes.load(snap)
+    const completeness = retained ?? await model(config, files, "completeness", logdir)
     let result = validateScope(completeness.result, snap, config, checkpoints), phase: Phase = "completeness"
     const sessions = [completeness.provenance]
     if (result.state === "continue") {
       if (!snap.pr) throw new Pause("Issue incorrectly requested PR review")
+      if (!dryRun && !retained) await passes.save(snap, result, completeness.provenance)
       if (!dryRun) await publisher.completenessPassed(snap, result, completeness.provenance)
       await publisher.fresh(snap)
       const final = await model(config, files, "final", logdir, result)
       if (final.provenance.session === completeness.provenance.session) throw new Pause("Final review must use a fresh session")
       result = final.result; phase = "final"; sessions.push(final.provenance)
     }
-    const output = { number, phase, assessment: result, sessions }
+    const output = { number, phase, assessment: result, sessions, completeness_reused: !!retained }
     await writeFile(path.join(logdir, "result.json"), JSON.stringify(output, null, 2))
     return dryRun ? { ...output, dry_run: true } : publisher.publish(snap, result, phase, sessions)
   } finally { await rm(temp, { recursive: true, force: true }) }

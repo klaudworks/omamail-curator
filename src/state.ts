@@ -24,9 +24,11 @@ export class Checkpoints {
     const found = comments.map(c => [c, this.decode(c, number, "status")] as const).filter(([, data]) => data).sort(([a], [b]) => b.id - a.id)
     return found.length ? [...found[0]] : [null, null]
   }
-  fingerprint(item: Document, pr: Document | null, events: Document[]) {
-    const relevant = events.filter(e => !this.decode(e, item.number) && e.user?.type !== "Bot")
+  relevant(item: Document, events: Document[]) {
+    return events.filter(e => !this.decode(e, item.number) && e.user?.type !== "Bot")
       .map(e => Object.fromEntries(["id", "body", "updated_at", "state", "commit_id", "user"].map(k => [k, e[k] ?? null])))
-    return digest({ id: item.node_id, title: item.title, body: item.body ?? null, head: pr?.head.sha ?? null, base: pr?.base.sha ?? null, events: relevant })
+  }
+  fingerprint(item: Document, pr: Document | null, events: Document[]) {
+    return digest({ id: item.node_id, title: item.title, body: item.body ?? null, head: pr?.head.sha ?? null, base: pr?.base.sha ?? null, events: this.relevant(item, events) })
   }
 }
