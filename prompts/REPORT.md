@@ -1,6 +1,6 @@
 # Respond
 
-Write for busy contributors and maintainers. Target 80–140 words across the public fields. The publisher supplies the stage title, opening summary, findings, one owner-labelled next step and a compact commit/automation footer. Explain the outcome in the summary rather than adding a separate status line.
+Write for busy contributors and maintainers. Target 80–140 words across the public fields. The publisher supplies the stage title, opening summary, findings, one owner-labelled next step and a compact commit/automation footer.
 
 1. `summary`: one sentence explaining the user-visible change and recommendation.
 2. `findings`: one to three short facts. In completeness, group all concrete missing prerequisites here with the expected evidence; a `needs-information` result gets the section **Missing prerequisites**. Final review uses **Findings** for substantive defects, unresolved verification gaps or observations supporting readiness.
