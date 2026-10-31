@@ -41,7 +41,11 @@ export class Publisher {
       head: sha, base: snap.pr?.base.sha ?? null, phase, assessment: result, sessions, criteria_changed: criteriaChanged, report_hash: digest(report) }
     const body = report + "\n\n" + this.checkpoints.encode(payload)
     if (Buffer.byteLength(body) > 65000) throw new Stop("status checkpoint exceeds GitHub comment size")
-    const existing = current.status_comment
+    const existing = current.comments.filter(comment => {
+      const previous = this.checkpoints.decode(comment, n, "status")
+      return previous?.contract_version === CONTRACT_VERSION && previous.fingerprint === snap.fingerprint &&
+        previous.phase === phase && canonical(previous.sessions ?? null) === canonical(sessions)
+    }).sort((a, b) => b.id - a.id)[0]
     if (!existing || existing.body !== body) {
       await this.fresh(snap)
       await this.api.mutate(existing ? "PATCH" : "POST", existing ? `/issues/comments/${existing.id}` : `/issues/${n}/comments`, { body })

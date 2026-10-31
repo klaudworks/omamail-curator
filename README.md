@@ -9,9 +9,9 @@ Every update has a stage title, a short summary, missing prerequisites or review
 1. Find eligible items, oldest first. PR checks must pass on the current commit.
 2. Check completeness and product fit. Small refinements can proceed; fundamental direction changes need a maintainer decision.
 3. When a PR is complete, use a fresh agent for final review.
-4. Update one status comment and the appropriate label. Reuse previous work when nothing relevant changed.
+4. Post one comment per completed assessment and update the appropriate label. Unchanged polling checks reuse previous work without posting again.
 
-Reviews run through OpenCode. The curator updates one comment and labels items. Maintainers control approvals, closure and merging.
+Reviews run through OpenCode. The curator posts normal comments and labels items. Maintainers control approvals, closure and merging.
 
 Implemented in TypeScript with Bun and the OpenCode V2 SDK. See [deployment and operations](deploy/README.md) to run it.
 

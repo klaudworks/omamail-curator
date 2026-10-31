@@ -12,8 +12,8 @@ Reviewer decisions are documented once, under [prompts/REVIEW.md](prompts/REVIEW
 
 ## Publication and recovery
 
-- Publish and update one identified status comment through completeness and final review, plus `needs-information`, `needs-maintainer-decision` or `review-ready` labels. Do not also post a formal GitHub review. Never close/reopen, approve, request changes, merge, alter draft state or repair contributions.
+- Publish one new normal status comment per completed assessment, plus `needs-information`, `needs-maintainer-decision` or `review-ready` labels. A reassessment after changed inputs appears as a new discussion entry. Do not also post a formal GitHub review. Never close/reopen, approve, request changes, merge, alter draft state or repair contributions.
 - Validate output, selected-model sessions and required guide/evidence reads. Recheck creator, current head/base, CI and relevant discussion before each effect. Readiness requires a fresh final review, verified affected security boundaries and no blockers.
-- Keep signed checkpoints in status comments. Unchanged inputs reuse the assessment; changed inputs first receive a relevant-delta reassessment. Policy-version changes invalidate old assessments once. Deleting a status comment triggers fresh processing when eligibility passes.
+- Keep signed checkpoints in status comments; the newest valid checkpoint is current. Unchanged inputs reuse the assessment without another comment. Deduplicate retries by input fingerprint, contract version, phase and model-session provenance; wording corrections to that same assessment may update its comment. Policy-version changes invalidate old assessments once. Removing the current checkpoint falls back to eligible signed history or fresh processing.
 - Discover existing comments/reviews before retrying a write. Exclude signed automated events from human decisions. Immediately recheck after publication; remove stale readiness if inputs changed. GitHub cannot make the check and mutation atomic.
 - Review proposed criteria changes against the baseline guidance. Duplicate handling is deferred. Maintainers own disposition.
