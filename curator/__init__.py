@@ -1,1 +1,0 @@
-"""Subscription-backed contribution curation."""

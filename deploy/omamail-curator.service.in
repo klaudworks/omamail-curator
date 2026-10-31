@@ -6,7 +6,7 @@ After=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=@CHECKOUT@
-ExecStart=/usr/bin/python3 -m curator.controller --config @CONFIG@
+ExecStart=@BUN@ src/controller.ts --config @CONFIG@
 TimeoutStartSec=infinity
 UMask=0077
 NoNewPrivileges=yes

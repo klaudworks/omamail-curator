@@ -13,20 +13,7 @@ Every update uses the same format: **Status · Summary · Findings · Next step*
 
 Reviews run through OpenCode. The curator can comment, leave informational reviews and label items. Maintainers control approvals, closure and merging.
 
-## Run it
-
-The Python controller runs on a Linux host; OpenCode and isolated investigation run in a VM. Keep GitHub credentials on the controller host.
-
-- Configure the repository, eligibility, CI requirements and VM transport using [deploy/config.example.json](deploy/config.example.json). Store the real configuration and credentials outside the checkout.
-- Install the guest runtime together with the entire `prompts/` directory. See [deploy/](deploy/) for the VM bridge and service definitions.
-- Check one item before enabling the 30-minute timer:
-
-```sh
-python3 -m curator.controller --config /private/config.json --item NUMBER --gate-only
-python3 -m curator.controller --config /private/config.json --item NUMBER --dry-run
-```
-
-`--gate-only` uses no model. `--dry-run` reviews without publishing. Remove those flags to publish. Pause scheduled work with `systemctl --user stop omamail-curator.timer`.
+Implemented in TypeScript with Bun and the OpenCode V2 SDK. See [deployment and operations](deploy/README.md) to run it.
 
 ## Find your way
 
@@ -35,4 +22,4 @@ python3 -m curator.controller --config /private/config.json --item NUMBER --dry-
 - [POLICY.md](POLICY.md): controller and publication rules.
 - [CONTRIBUTING.md](CONTRIBUTING.md): development checks.
 
-Repository guidelines are read from the reviewed baseline, starting with its `AGENTS.md`; the [Omamail document map](prompts/OMAMAIL.md) links the main sources. Implementation details live in [`curator/`](curator/).
+Repository guidelines are read from the reviewed baseline, starting with its `AGENTS.md`; the [Omamail document map](prompts/OMAMAIL.md) links the main sources. Implementation lives in [`src/`](src/) and [`reviewer/`](reviewer/).
