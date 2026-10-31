@@ -46,14 +46,6 @@ export class Publisher {
       await this.fresh(snap)
       await this.api.mutate(existing ? "PATCH" : "POST", existing ? `/issues/comments/${existing.id}` : `/issues/${n}/comments`, { body })
     }
-    if (phase === "final") {
-      const identity = { type: "review", repository: this.config.repository, number: n, fingerprint: snap.fingerprint, head: sha, report_hash: digest(report) }
-      const reviews = await this.api.pages(`/pulls/${n}/reviews`)
-      if (!reviews.some(r => canonical(this.checkpoints.decode(r, n, "review")) === canonical(identity))) {
-        await this.fresh(snap)
-        await this.api.mutate("POST", `/pulls/${n}/reviews`, { commit_id: sha, event: "COMMENT", body: report + "\n\n" + this.checkpoints.encode(identity) })
-      }
-    }
     const wanted = new Set<string>(LABELS.has(result.state) ? [result.state] : [])
     if (result.state === "ready") wanted.add("review-ready")
     if (result.state === "blocked") wanted.add(result.malicious || result.security === "BLOCK" ? "needs-maintainer-decision" : "needs-information")

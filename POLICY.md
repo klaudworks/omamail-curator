@@ -12,7 +12,7 @@ Reviewer decisions are documented once, under [prompts/REVIEW.md](prompts/REVIEW
 
 ## Publication and recovery
 
-- Publish only one identified status comment, informational `COMMENT` reviews, and `needs-information`, `needs-maintainer-decision` or `review-ready` labels. Never close/reopen, approve, request changes, merge, alter draft state or repair contributions.
+- Publish and update one identified status comment through completeness and final review, plus `needs-information`, `needs-maintainer-decision` or `review-ready` labels. Do not also post a formal GitHub review. Never close/reopen, approve, request changes, merge, alter draft state or repair contributions.
 - Validate output, selected-model sessions and required guide/evidence reads. Recheck creator, current head/base, CI and relevant discussion before each effect. Readiness requires a fresh final review, verified affected security boundaries and no blockers.
 - Keep signed checkpoints in status comments. Unchanged inputs reuse the assessment; changed inputs first receive a relevant-delta reassessment. Policy-version changes invalidate old assessments once. Deleting a status comment triggers fresh processing when eligibility passes.
 - Discover existing comments/reviews before retrying a write. Exclude signed automated events from human decisions. Immediately recheck after publication; remove stale readiness if inputs changed. GitHub cannot make the check and mutation atomic.

@@ -11,7 +11,7 @@ Every update has a stage title, a short summary, missing prerequisites or review
 3. When a PR is complete, use a fresh agent for final review.
 4. Update one status comment and the appropriate label. Reuse previous work when nothing relevant changed.
 
-Reviews run through OpenCode. The curator can comment, leave informational reviews and label items. Maintainers control approvals, closure and merging.
+Reviews run through OpenCode. The curator updates one comment and labels items. Maintainers control approvals, closure and merging.
 
 Implemented in TypeScript with Bun and the OpenCode V2 SDK. See [deployment and operations](deploy/README.md) to run it.
 
