@@ -11,5 +11,6 @@ Use the files under `base/` for the reviewed baseline. The links below identify 
 | Keyboard, focus and navigation | [`docs/KEYS.md`](https://github.com/huacnlee/omamail/blob/main/docs/KEYS.md) |
 | Affected security boundaries | [`docs/SECURITY-BOUNDARIES.md`](https://github.com/huacnlee/omamail/blob/main/docs/SECURITY-BOUNDARIES.md) |
 | Backend compatibility and runtime verification | [`docs/BACKEND-RUNTIME.md`](https://github.com/huacnlee/omamail/blob/main/docs/BACKEND-RUNTIME.md) |
+| Which checks execute, and what do their targets build first? | [`Makefile`](https://github.com/huacnlee/omamail/blob/main/Makefile), [CI workflow](https://github.com/huacnlee/omamail/blob/main/.github/workflows/ci.yml), [`app/CMakeLists.txt`](https://github.com/huacnlee/omamail/blob/main/app/CMakeLists.txt) |
 
 Open only relevant documents. Follow baseline `AGENTS.md` for additional provider, rendering or domain links. Inspect any proposed guideline changes under `head/` separately; they do not silently replace the baseline criteria.

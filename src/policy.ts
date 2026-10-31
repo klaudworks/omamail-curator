@@ -4,7 +4,7 @@ import { Schema } from "effect"
 export class Stop extends Error {}
 export class Pause extends Error {}
 export type Phase = "completeness" | "final"
-export const CONTRACT_VERSION = 6
+export const CONTRACT_VERSION = 7
 export const MODELS = { completeness: "openai/gpt-6-luna#xhigh", final: "openai/gpt-6.1-sol#xhigh" }
 export const LABELS = new Set(["needs-information", "needs-maintainer-decision", "review-ready"])
 
