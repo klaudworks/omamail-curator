@@ -8,7 +8,7 @@ export const CONTRACT_VERSION = 12
 export const ISSUE_CONTRACT_VERSION = 14
 export const contractVersion = (pullRequest: boolean) => pullRequest ? CONTRACT_VERSION : ISSUE_CONTRACT_VERSION
 export const MODELS = { completeness: "openai/gpt-6.1-terra#medium", final: "openai/gpt-6.1-sol#xhigh" }
-export const LABELS = new Set(["needs-information", "needs-maintainer-decision", "review-ready"])
+export const LABELS = new Set(["needs-information", "needs-maintainer-decision", "review-ready", "review-blocked"])
 export const ISSUE_LABELS = { bug: "bug", feature: "enhancement", disputed: "question", support: "question" } as const
 
 // Compatible with the existing Python checkpoints, including ensure_ascii.
@@ -89,14 +89,18 @@ export function eligible(item: Document, config: Config) {
   if (item.state !== "open" || item.locked) throw new Stop("item closed or locked")
 }
 
+export function successfulRun(pr: Document, workflow: Document, workflowPath: string) {
+  const candidates = workflow.runs.filter((run: Document) => run.workflow_id === workflow.id && run.event === "pull_request" && run.head_sha === pr.head.sha &&
+    (run.pull_requests?.length ? run.pull_requests.some((p: Document) => p.number === pr.number) : run.head_repository?.id === pr.head.repo.id && run.head_branch === pr.head.ref))
+  const run = candidates.sort((a: Document, b: Document) => b.run_number - a.run_number || b.run_attempt - a.run_attempt)[0]
+  if (!run) throw new Stop(`CI missing: ${workflowPath}`)
+  if (run.status !== "completed" || run.conclusion !== "success") throw new Stop(`CI not successful: ${workflowPath} (${run.status}/${run.conclusion})`)
+  return run as Document
+}
+
 export function successfulRuns(pr: Document, workflows: Record<string, Document>, config: Config) {
   return config.pipelines.map(spec => {
-    const source = workflows[spec.path]
-    const candidates = source.runs.filter((run: Document) => run.workflow_id === source.id && run.event === "pull_request" && run.head_sha === pr.head.sha &&
-      (run.pull_requests?.length ? run.pull_requests.some((p: Document) => p.number === pr.number) : run.head_repository?.id === pr.head.repo.id && run.head_branch === pr.head.ref))
-    const run = candidates.sort((a: Document, b: Document) => b.run_number - a.run_number || b.run_attempt - a.run_attempt)[0]
-    if (!run) throw new Stop(`CI missing: ${spec.path}`)
-    if (run.status !== "completed" || run.conclusion !== "success") throw new Stop(`CI not successful: ${spec.path} (${run.status}/${run.conclusion})`)
+    const source = workflows[spec.path], run = successfulRun(pr, source, spec.path)
     const latest = new Map<string, Document>()
     for (const job of source.jobs[String(run.id)] ?? []) if (!latest.has(job.name) || job.id > latest.get(job.name)!.id) latest.set(job.name, job)
     if (!latest.size || [...latest.values()].some(j => j.status !== "completed" || j.conclusion !== "success")) throw new Stop(`CI job missing or unsuccessful: ${spec.path}`)

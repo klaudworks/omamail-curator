@@ -7,9 +7,9 @@ import { contractVersion, Stop, LABELS, ISSUE_LABELS, MODELS, assessment, eligib
 export interface Provenance { model: string, session: string, verified_tools: true }
 export class Publisher {
   constructor(private api: GitHub, private config: Config, private checkpoints: Checkpoints) {}
-  async fresh(snap: Snapshot, allowDeferred = false) {
-    const current = await snapshot(this.api, this.config, this.checkpoints, snap.item.number, allowDeferred)
-    if (current.fingerprint !== snap.fingerprint || canonical(current.ci) !== canonical(snap.ci)) throw new Stop("publication inputs changed; discard stale result")
+  async fresh(snap: Snapshot, allowDeferred = false, requireCI = snap.ci_checked, polling = false) {
+    const current = await snapshot(this.api, this.config, this.checkpoints, snap.item.number, allowDeferred, polling, requireCI)
+    if (current.fingerprint !== snap.fingerprint || requireCI && snap.ci_checked && canonical(current.ci) !== canonical(snap.ci)) throw new Stop("publication inputs changed; discard stale result")
     return current
   }
   async invalidate(item: Document) {
@@ -22,11 +22,35 @@ export class Publisher {
     const current = await this.fresh(snap)
     if (current.item.labels.some((label: Document) => label.name === "needs-information")) await this.api.mutate("DELETE", `/issues/${snap.item.number}/labels/needs-information`)
   }
-  async publish(snap: Snapshot, raw: Assessment, phase: Phase, sessions: Provenance[], comment = true, context?: PublicationContext) {
-    let result = assessment(raw, phase)
+  private validated(snap: Snapshot, raw: Assessment, phase: Phase, sessions: Provenance[]) {
+    const result = assessment(raw, phase)
+    if (phase === "final" && (!snap.pr || !snap.ci_checked)) throw new Stop("Final publication requires successful current-head CI")
     const expected = [MODELS.completeness, ...(phase === "final" ? [MODELS.final] : [])]
     if (canonical(sessions.map(s => s.model)) !== canonical(expected) || sessions.some(s => s.verified_tools !== true) || new Set(sessions.map(s => s.session)).size !== expected.length) throw new Stop("Publication requires verified selected-model sessions and evidence tools")
-    result = validateScope(result, snap, this.config, this.checkpoints)
+    return validateScope(result, snap, this.config, this.checkpoints)
+  }
+  private labels(snap: Snapshot, result: Assessment) {
+    const wanted = new Set<string>(LABELS.has(result.state) ? [result.state] : [])
+    if (result.state === "ready") wanted.add("review-ready")
+    if (result.state === "blocked") wanted.add("review-blocked")
+    const managed = new Set(LABELS)
+    if (!snap.pr) {
+      wanted.add(ISSUE_LABELS[result.kind])
+      for (const label of Object.values(ISSUE_LABELS)) managed.add(label)
+      if (result.state === "declined") wanted.add("wontfix")
+      if (result.state === "deferred") wanted.add("deferred")
+      // Only remove a disposition label previously applied by this curator.
+      if (snap.previous?.assessment.state === "declined") managed.add("wontfix")
+    }
+    const actual = new Set<string>(snap.item.labels.map((l: Document) => l.name))
+    return { remove: [...actual].filter(l => managed.has(l) && !wanted.has(l)).sort(), add: [...wanted].filter(l => !actual.has(l)).sort() }
+  }
+  settled(snap: Snapshot, raw: Assessment, phase: Phase, sessions: Provenance[]) {
+    const labels = this.labels(snap, this.validated(snap, raw, phase, sessions))
+    return !labels.remove.length && !labels.add.length
+  }
+  async publish(snap: Snapshot, raw: Assessment, phase: Phase, sessions: Provenance[], comment = true, context?: PublicationContext) {
+    const result = this.validated(snap, raw, phase, sessions)
     let current = await this.fresh(snap)
     const n = snap.item.number, sha = snap.pr?.head.sha ?? null
     const version = contractVersion(!!snap.pr)
@@ -73,25 +97,12 @@ export class Publisher {
       await this.fresh(snap)
       await this.api.mutate(existing ? "PATCH" : "POST", existing ? `/issues/comments/${existing.id}` : `/issues/${n}/comments`, { body })
     }
-    const wanted = new Set<string>(LABELS.has(result.state) ? [result.state] : [])
-    if (result.state === "ready") wanted.add("review-ready")
-    if (result.state === "blocked") wanted.add(result.malicious || result.security === "BLOCK" ? "needs-maintainer-decision" : "needs-information")
-    const managed = new Set(LABELS)
-    if (!snap.pr) {
-      wanted.add(ISSUE_LABELS[result.kind])
-      for (const label of Object.values(ISSUE_LABELS)) managed.add(label)
-      if (result.state === "declined") wanted.add("wontfix")
-      if (result.state === "deferred") wanted.add("deferred")
-      // Only remove a disposition label previously applied by this curator.
-      if (snap.previous?.assessment.state === "declined") managed.add("wontfix")
-    }
     current = await this.fresh(snap)
-    const actual = new Set<string>(current.item.labels.map((l: Document) => l.name))
-    for (const label of [...actual].filter(l => managed.has(l) && !wanted.has(l)).sort()) {
+    const labels = this.labels(current, result)
+    for (const label of labels.remove) {
       await this.fresh(snap); await this.api.mutate("DELETE", `/issues/${n}/labels/${label}`)
     }
-    const missing = [...wanted].filter(l => !actual.has(l)).sort()
-    if (missing.length) { await this.fresh(snap); await this.api.mutate("POST", `/issues/${n}/labels`, { labels: missing }) }
+    if (labels.add.length) { await this.fresh(snap); await this.api.mutate("POST", `/issues/${n}/labels`, { labels: labels.add }) }
     try { await this.fresh(snap, result.state === "deferred") }
     catch (error) { if (error instanceof Stop) await this.invalidate(await this.api.get(`/issues/${n}`)); throw error }
     return { number: n, state: result.state, head: sha, phase }

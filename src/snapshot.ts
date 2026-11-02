@@ -1,8 +1,12 @@
 import { GitHub } from "./github.ts"
 import { Checkpoints } from "./state.ts"
-import { Stop, Pause, eligible, authorAllowed, successfulRuns, type Config, type Document, type Assessment } from "./policy.ts"
+import { Stop, Pause, eligible, authorAllowed, successfulRun, successfulRuns, type Config, type Document, type Assessment } from "./policy.ts"
 
-export async function snapshot(api: GitHub, config: Config, checkpoints: Checkpoints, number: number, allowDeferred = false) {
+// One API instance per sweep. Only discovery reuses metadata; model/publication
+// gates always revalidate it with GitHub (including conditional GETs).
+const workflowMetadata = new WeakMap<GitHub, Map<string, Document>>()
+
+export async function snapshot(api: GitHub, config: Config, checkpoints: Checkpoints, number: number, allowDeferred = false, polling = false, requireCI = true) {
   const item = await api.get(`/issues/${number}`)
   eligible(item, config)
   if (!allowDeferred && item.labels.some((l: Document) => l.name === "deferred")) throw new Stop("deferred; a maintainer must remove the deferred label to resume")
@@ -13,15 +17,23 @@ export async function snapshot(api: GitHub, config: Config, checkpoints: Checkpo
     if (!pr) throw new Stop("PR unavailable")
     if (pr.draft) throw new Stop("draft PR")
     if (pr.state !== "open" || !authorAllowed(pr, config, true)) throw new Stop("PR no longer eligible")
+  }
+  if (pr && requireCI) {
     const workflows: Record<string, Document> = {}
+    let metadata = workflowMetadata.get(api)
+    if (!metadata) { metadata = new Map(); workflowMetadata.set(api, metadata) }
     for (const spec of config.pipelines) {
-      const workflow = await api.get(`/actions/workflows/${encodeURIComponent(spec.path.split("/").at(-1)!)}`)
+      const workflow = polling && metadata.has(spec.path) ? metadata.get(spec.path)! : await api.get(`/actions/workflows/${encodeURIComponent(spec.path.split("/").at(-1)!)}`)
       if (workflow.path !== spec.path || workflow.state !== "active") throw new Stop("unexpected or disabled workflow")
+      metadata.set(spec.path, workflow)
       const runs = await api.pages(`/actions/workflows/${workflow.id}/runs?event=pull_request&head_sha=${pr.head.sha}`, "workflow_runs")
-      const jobs: Record<string, Document[]> = {}
-      const latest = [...runs].sort((a, b) => b.run_number - a.run_number || b.run_attempt - a.run_attempt)[0]
-      if (latest?.status === "completed" && latest.conclusion === "success") jobs[String(latest.id)] = await api.pages(`/actions/runs/${latest.id}/jobs?filter=all`, "jobs")
-      workflows[spec.path] = { id: workflow.id, runs, jobs }
+      workflows[spec.path] = { id: workflow.id, runs, jobs: {} }
+      successfulRun(pr, workflows[spec.path], spec.path)
+    }
+    // No job/check/detail requests until every required workflow has succeeded.
+    for (const spec of config.pipelines) {
+      const source = workflows[spec.path], latest = successfulRun(pr, source, spec.path)
+      source.jobs[String(latest.id)] = await api.pages(`/actions/runs/${latest.id}/jobs?filter=all`, "jobs")
     }
     receipt = successfulRuns(pr, workflows, config)
     const statuses = await api.pages(`/commits/${pr.head.sha}/statuses`)
@@ -50,7 +62,7 @@ export async function snapshot(api: GitHub, config: Config, checkpoints: Checkpo
   const events = [...comments]
   if (pr) events.push(...await api.pages(`/pulls/${number}/reviews`), ...await api.pages(`/pulls/${number}/comments`))
   const [status_comment, previous] = checkpoints.current(comments, number)
-  return { item, pr, ci: receipt, events, comments, status_comment, previous,
+  return { item, pr, ci: receipt, ci_checked: !!pr && requireCI, events, comments, status_comment, previous,
     fingerprint: checkpoints.fingerprint(item, pr, events), criteria_changed: undefined as boolean | undefined }
 }
 export type Snapshot = Awaited<ReturnType<typeof snapshot>>

@@ -1,4 +1,3 @@
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { Pause, type Config, type Document } from "./policy.ts"
 import { checked, bounded } from "./io.ts"
@@ -6,10 +5,20 @@ import { Checkpoints } from "./state.ts"
 import type { GitHub } from "./github.ts"
 import type { Snapshot } from "./snapshot.ts"
 import type { ChangeContext } from "./changes.ts"
+import { mediaType, sampleRecording } from "./media.ts"
 
 const env = { PATH: process.env.PATH, HOME: "/nonexistent", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_TERMINAL_PROMPT: "0", LANG: "C.UTF-8" }
 const command = (args: string[], input?: string) => checked(args, { env, input, timeout: 180_000 })
 const validSHA = (sha: string) => { if (!/^[0-9a-f]{40}$/.test(sha)) throw new Pause("Invalid source revision"); return sha }
+
+export function updateEvidenceCI(files: Record<string, string>, snap: Snapshot) {
+  const input = JSON.parse(Buffer.from(files["input.json"], "base64").toString())
+  const status = !snap.pr ? "not applicable to issues" : snap.ci_checked ? "passed" : "not checked; required before final review"
+  input.eligibility.ci_gate = status
+  input.ci = { path: "ci.json", status, workflows: snap.ci.length, jobs: snap.ci.reduce((n, run) => n + run.jobs.length, 0) }
+  files["ci.json"] = Buffer.from(JSON.stringify(snap.ci, null, 2)).toString("base64")
+  files["input.json"] = Buffer.from(JSON.stringify(input, null, 2)).toString("base64")
+}
 
 async function attachment(url: string) {
   const origins = new Set(["github.com", "user-attachments.githubusercontent.com", "github-production-user-asset-6210df.s3.amazonaws.com"])
@@ -76,7 +85,7 @@ export async function collect(snap: Snapshot, config: Config, directory: string,
   snap.criteria_changed = paths.some(p => p.endsWith("AGENTS.md") || p.endsWith("CONTRIBUTING.md") || p.startsWith(".opencode/"))
   const events = snap.events.filter(e => !checkpoints.decode(e, snap.item.number))
   const context: Document = { item: Object.fromEntries(["number", "title", "body", "html_url", "user"].map(k => [k, snap.item[k] ?? null])),
-    eligibility: { repository: config.repository, opener_verified: true, state: "open", draft: pr ? false : null, ci_gate: pr ? "passed" : "not applicable to issues" },
+    eligibility: { repository: config.repository, opener_verified: true, state: "open", draft: pr ? false : null },
     revisions, comparison: { base: comparisonBase, head: revisions.head, path: "diff.patch" }, pr: !!pr, ci: snap.ci, discussion: events, previous: snap.previous, changed_files: paths, criteria_changed: snap.criteria_changed,
     omitted_source: omitted, assets: [], maintainers: config.maintainers }
   if (changes) {
@@ -135,22 +144,16 @@ export async function collect(snap: Snapshot, config: Config, directory: string,
     } catch (error) { context.delta = { unavailable: String(error), requirement: "Reassess from the full diff; do not assume unchanged evidence." } }
   }
   const urls = [...new Set(JSON.stringify(context).match(/https:\/\/github\.com\/user-attachments\/assets\/[0-9a-f-]{36}/g) ?? [])].sort()
+  const descriptions = [snap.item.body ?? "", ...events.map(event => event.body ?? "")]
   for (const [index, url] of urls.entries()) {
     const asset: Document = { url }
     try {
       const data = await attachment(url)
-      const ext = data.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex")) ? ".png" : data.subarray(0, 3).equals(Buffer.from("ffd8ff", "hex")) ? ".jpg" : data.subarray(4, 8).toString() === "ftyp" ? ".mp4" : undefined
-      if (!ext) throw new Error("Unsupported attachment type")
-      if (ext !== ".mp4") { const name = `assets/${index}${ext}`; files[name] = data.toString("base64"); asset.path = name }
+      const type = mediaType(data)
+      if (type === "png" || type === "jpg") { const name = `assets/${index}.${type}`; files[name] = data.toString("base64"); asset.path = name }
       else {
-        const video = path.join(directory, `video-${index}.mp4`), frames = path.join(directory, `frames-${index}`)
-        await writeFile(video, data); await mkdir(frames)
-        await checked(["ffmpeg", "-nostdin", "-v", "error", "-protocol_whitelist", "file,pipe", "-i", video, "-vf", "fps=1/4,scale=1280:-2", "-frames:v", "8", path.join(frames, "%02d.png")], { env: { PATH: process.env.PATH }, timeout: 60_000 })
-        asset.sampled_frames = []
-        for (const frame of (await readdir(frames)).filter(f => f.endsWith(".png")).sort()) {
-          const name = `assets/${index}-frame-${frame}`; files[name] = (await readFile(path.join(frames, frame))).toString("base64"); asset.sampled_frames.push(name)
-        }
-        asset.limitations = "Sampled frames every four seconds, at most eight; not full playback or verification of motion/audio."
+        const sampled = await sampleRecording(data, type, index, directory, descriptions.filter(text => text.includes(url)))
+        Object.assign(files, sampled.files); Object.assign(asset, sampled.metadata)
       }
     } catch (error) { asset.unavailable = String(error).slice(0, 200) }
     context.assets.push(asset)
@@ -162,10 +165,11 @@ export async function collect(snap: Snapshot, config: Config, directory: string,
     files[name] = Buffer.from(JSON.stringify(value, null, 2)).toString("base64")
     context[key] = { path: name }
     if (key === "discussion" || key === "assets") context[key].count = value.length
-    else if (key === "ci") Object.assign(context[key], { status: pr ? "success" : "not applicable", workflows: value.length, jobs: value.reduce((n: number, r: Document) => n + r.jobs.length, 0) })
+    else if (key === "ci") continue // Filled from the stage's actual gate below.
     else Object.assign(context[key], { head: value.head, state: value.assessment.state, blockers: value.assessment.blockers })
   }
   files["input.json"] = Buffer.from(JSON.stringify(context, null, 2)).toString("base64")
+  updateEvidenceCI(files, snap)
   files["source-executables.json"] = Buffer.from(JSON.stringify(executables)).toString("base64")
   if (Object.values(files).reduce((n, v) => n + v.length, 0) > 128 * 1024 * 1024) throw new Pause("Evidence package exceeds bounded ingestion limit")
   return files

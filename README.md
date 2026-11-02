@@ -6,9 +6,9 @@ Issue replies are short natural comments with an automated-curator attribution. 
 
 ## How it works
 
-1. Find eligible items, oldest first. PR checks must pass on the current commit.
+1. Find eligible items, oldest first. PR completeness can run while CI is pending; final review waits for successful checks on the current commit.
 2. Triage issues as bugs (`bug`), enhancements (`enhancement`), or support/disputed behavior (`question`). Verify available source, release and discussion evidence. Tag the creator for missing details or invite their coding agent to prepare a focused fix/enhancement PR with before/after evidence. Larger product changes go to maintainers for a specific scope question; ordinary replies record their decisions.
-3. When a PR is complete, use a fresh agent for final review.
+3. Retain passing completeness, then use a fresh agent for final review once current-commit CI succeeds.
 4. Post one initial issue assessment and one comment per completed PR assessment. Update category/status labels. Optional Jev decisions skip nonmaterial updates; useful changed issue answers get a follow-up comment. Unchanged polling reuses work without model calls or another comment.
 
 Reviews run through OpenCode. The curator posts normal comments and labels items. Maintainers control approvals, closure and merging.

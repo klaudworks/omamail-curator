@@ -19,7 +19,7 @@ Use Bun's x64 baseline build if the guest CPU lacks AVX.
 
 | Controller tools | Guest tools |
 | --- | --- |
-| systemd, QEMU, OpenSSH, tinyproxy, Git, FFmpeg, tar, flock | Bubblewrap, ripgrep, bash, coreutils, tar, Qt, compiler/build tools |
+| systemd, QEMU, OpenSSH, tinyproxy, Git, FFmpeg (including ffprobe), tar, flock | Bubblewrap, ripgrep, bash, coreutils, tar, Qt, compiler/build tools |
 
 The guest also needs an authenticated OpenCode database and public Rust/Cargo and Node toolchains, including dependencies for offline diagnostics. Keep credentials outside the checkout and toolchain directories. See [reviewer isolation](../deploy/ISOLATION.md) for the filesystem boundary and verification steps.
 
@@ -77,6 +77,14 @@ journalctl --user -u omamail-curator.service -n 30
 ```
 
 Sweeps run every five minutes, oldest first and sequentially. A long review delays later items. Verify a completed sweep and its published outcome; an active timer alone does not establish that reviews work.
+
+Completeness runs independently of CI progress. A pass is saved while the current commit waits for CI; final review and final-assessment publication still require all configured pipelines/jobs to succeed. Completeness comments can request missing prerequisites before those pipelines finish. Provision the repository label `review-blocked` for concrete defects/attacks; `needs-maintainer-decision` remains for product choices.
+
+The evidence collector accepts PNG/JPEG images and MP4/GIF recordings. Recordings are decoded with FFmpeg into at most eight full-duration overview positions plus 24 timestamps from descriptions/comments containing that attachment, on a quarter-second grid. The evidence index records frame times and any omitted timestamps. Decoder timeouts, one-day duration, 1280×1280 frame bounds, 32 MiB downloaded/decoded asset limits and the overall evidence-package limit remain explicit ingestion bounds, not contributor verification requirements.
+
+Each sweep logs `github-usage`: request count, `not_modified` responses, remaining primary quota and reset time. Authenticated conditional GETs revalidate private ETag/body caches under `state_dir/github`; a `304` does not consume primary quota. Cache entries are scoped to the repository and credential and are never used after failed revalidation. Unchanged settled issues normally need two requests (issue and comments), with no publication or assessment-state writes.
+
+Rate limits produce a `backoff` event with `retry_at`. The deadline survives process restarts: subsequent timer ticks make zero GitHub requests until it expires, including identity checks and writes. Primary exhaustion waits until the advertised reset (plus a one-second margin); a longer `Retry-After` takes precedence. Secondary limits honor `Retry-After`, or back off exponentially from one minute to one hour when no deadline is provided. The next scheduled sweep after the deadline resumes normally; leave the timer active. Ordinary authorization errors still pause as failures rather than being mistaken for quota exhaustion.
 
 ## Maintenance and recovery
 
