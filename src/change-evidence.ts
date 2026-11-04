@@ -14,6 +14,9 @@ const sha = (value: unknown): string => {
 // a merge base is not proof that a contributor made no additional changes.
 export async function changeEvidence(api: GitHub, config: Config, before: Document, after: Document) {
   if (!before.head || !after.head) return { kind: "not-a-pr", review_required: false }
+  // Identical immutable revisions need no clone or repeated contribution patch
+  // in the decision request. Discussion still goes through the relevance gate.
+  if (sha(before.head) === sha(after.head) && sha(before.base) === sha(after.base)) return { kind: "unchanged-revisions", review_required: false, complete: true }
   const root = await mkdtemp(path.join(tmpdir(), "curator-changes-")), repo = path.join(root, "source.git")
   const env = { PATH: process.env.PATH, HOME: "/nonexistent", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_TERMINAL_PROMPT: "0", LANG: "C.UTF-8" }
   const options = { env, timeout: 180_000, limit: 4 * 1024 * 1024 }

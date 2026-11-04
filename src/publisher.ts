@@ -7,6 +7,19 @@ import { contractVersion, Stop, LABELS, ISSUE_LABELS, MODELS, assessment, eligib
 export interface Provenance { model: string, session: string, verified_tools: true }
 export class Publisher {
   constructor(private api: GitHub, private config: Config, private checkpoints: Checkpoints) {}
+  async progress(snap: Snapshot, message: string, create = true) {
+    if (!snap.pr) return
+    const current = await this.fresh(snap, false, false)
+    const n = snap.item.number, sha = snap.pr.head.sha
+    const existing = current.comments.filter(c => this.checkpoints.decode(c, n, "progress")).sort((a, b) => b.id - a.id)[0]
+    if (!create && !existing) return
+    const report = `**Curator:** ${message}\n\n[Commit ${sha.slice(0, 7)}](https://github.com/${this.config.repository}/commit/${sha}) · _Automated by [omamail-curator](https://github.com/klaudworks/omamail-curator)._`
+    if (existing && this.checkpoints.decode(existing, n, "progress")?.report_hash === digest(report)) return
+    const body = report + "\n\n" + this.checkpoints.encode({ type: "progress", repository: this.config.repository, number: n, head: sha, report_hash: digest(report) })
+    await this.fresh(snap, false, false)
+    await this.api.mutate(existing ? "PATCH" : "POST", existing ? `/issues/comments/${existing.id}` : `/issues/${n}/comments`, { body })
+    await this.fresh(snap, false, false)
+  }
   async fresh(snap: Snapshot, allowDeferred = false, requireCI = snap.ci_checked, polling = false) {
     const current = await snapshot(this.api, this.config, this.checkpoints, snap.item.number, allowDeferred, polling, requireCI)
     if (current.fingerprint !== snap.fingerprint || requireCI && snap.ci_checked && canonical(current.ci) !== canonical(snap.ci)) throw new Stop("publication inputs changed; discard stale result")
@@ -103,7 +116,14 @@ export class Publisher {
       await this.fresh(snap); await this.api.mutate("DELETE", `/issues/${n}/labels/${label}`)
     }
     if (labels.add.length) { await this.fresh(snap); await this.api.mutate("POST", `/issues/${n}/labels`, { labels: labels.add }) }
-    try { await this.fresh(snap, result.state === "deferred") }
+    try {
+      current = await this.fresh(snap, result.state === "deferred")
+      if (snap.pr && current.status_comment) {
+        const action = result.state === "ready" ? "Review complete; awaiting the maintainer’s merge decision" :
+          result.next_step.owner === "author" ? `Waiting for @${snap.item.user.login}` : "Waiting for a maintainer"
+        await this.progress(current, `${action}. See the [assessment](https://github.com/${this.config.repository}/pull/${n}#issuecomment-${current.status_comment.id}).`, false)
+      }
+    }
     catch (error) { if (error instanceof Stop) await this.invalidate(await this.api.get(`/issues/${n}`)); throw error }
     return { number: n, state: result.state, head: sha, phase }
   }

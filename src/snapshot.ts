@@ -1,6 +1,6 @@
 import { GitHub } from "./github.ts"
 import { Checkpoints } from "./state.ts"
-import { Stop, Pause, eligible, authorAllowed, successfulRun, successfulRuns, type Config, type Document, type Assessment } from "./policy.ts"
+import { Stop, Pause, CIWait, eligible, authorAllowed, successfulRun, successfulRuns, type Config, type Document, type Assessment } from "./policy.ts"
 
 // One API instance per sweep. Only discovery reuses metadata; model/publication
 // gates always revalidate it with GitHub (including conditional GETs).
@@ -24,7 +24,7 @@ export async function snapshot(api: GitHub, config: Config, checkpoints: Checkpo
     if (!metadata) { metadata = new Map(); workflowMetadata.set(api, metadata) }
     for (const spec of config.pipelines) {
       const workflow = polling && metadata.has(spec.path) ? metadata.get(spec.path)! : await api.get(`/actions/workflows/${encodeURIComponent(spec.path.split("/").at(-1)!)}`)
-      if (workflow.path !== spec.path || workflow.state !== "active") throw new Stop("unexpected or disabled workflow")
+      if (workflow.path !== spec.path || workflow.state !== "active") throw new CIWait("unexpected or disabled workflow")
       metadata.set(spec.path, workflow)
       const runs = await api.pages(`/actions/workflows/${workflow.id}/runs?event=pull_request&head_sha=${pr.head.sha}`, "workflow_runs")
       workflows[spec.path] = { id: workflow.id, runs, jobs: {} }
@@ -42,7 +42,7 @@ export async function snapshot(api: GitHub, config: Config, checkpoints: Checkpo
       const key = status.context.toLowerCase()
       if (!latest.has(key) || status.id > latest.get(key)!.id) latest.set(key, status)
     }
-    if ([...latest.values()].some(s => s.state !== "success")) throw new Stop("additional commit status not successful")
+    if ([...latest.values()].some(s => s.state !== "success")) throw new CIWait("additional commit status not successful")
     const rules = await api.get(`/rules/branches/${encodeURIComponent(pr.base.ref)}`)
     const checks = await api.pages(`/commits/${pr.head.sha}/check-runs?filter=latest`, "check_runs")
     for (const rule of rules) {
@@ -51,8 +51,8 @@ export async function snapshot(api: GitHub, config: Config, checkpoints: Checkpo
         const name = requirement.context, app = requirement.integration_id
         const matches = checks.filter(c => c.name === name && (!app || c.app.id === app)).sort((a, b) => b.id - a.id)
         if (matches.length) {
-          if (matches[0].status !== "completed" || matches[0].conclusion !== "success") throw new Stop(`required check unsuccessful: ${name}`)
-        } else if (!latest.has(name.toLowerCase()) || app) throw new Stop(`required check missing: ${name}`)
+          if (matches[0].status !== "completed" || matches[0].conclusion !== "success") throw new CIWait(`required check unsuccessful: ${name}`)
+        } else if (!latest.has(name.toLowerCase()) || app) throw new CIWait(`required check missing: ${name}`)
       }
     }
     const current = await api.get(`/pulls/${number}`)

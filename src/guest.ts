@@ -8,7 +8,7 @@ import { Effect, References, Schema } from "effect"
 import type { AssistantTool } from "@opencode/schema/session-message"
 import { review } from "../reviewer/host.ts"
 import { MODELS, Pause, assessment } from "./policy.ts"
-import { guides, SYSTEM } from "./prompts.ts"
+import { guides, requiredGuides, SYSTEM } from "./prompts.ts"
 
 const Request = Schema.Struct({ phase: Schema.Literals(["completeness", "final"]), host_time: Schema.Number,
   files: Schema.Record(Schema.String, Schema.String), completeness: Schema.optional(Schema.Unknown) })
@@ -96,10 +96,13 @@ export async function guest(input: unknown) {
     const sandbox = { root, evidence, work, data, bun: path.dirname(path.dirname(process.execPath)),
       node: process.env.CURATOR_NODE_ROOT ?? path.join(homedir(), ".local/share/mise/installs/node/26.12.0"),
       toolchain: process.env.CURATOR_TOOLCHAIN ?? path.join(homedir(), ".local/share/omamail-curator/toolchain") }
+    const item = JSON.parse(await readFile(target("input.json"), "utf8"))
+    const criteria = ["base/AGENTS.md", ...(item.pr ? ["base/CONTRIBUTING.md"] : [])].filter(n => Object.hasOwn(request.files, n))
+    const requiredEvidence = ["input.json", ...(item.changes ? ["changes.json"] : []), ...criteria]
     const result = await Effect.runPromise(Effect.scoped(review({ sandbox,
       database: process.env.CURATOR_DATABASE ?? path.join(homedir(), ".local/share/opencode/opencode.db"),
       guides: await guides(), system: SYSTEM, phase: request.phase, model: MODELS[request.phase],
-      prompt: `Stage: ${request.phase}. Start at REVIEW.md. Read input.json, then follow the applicable stage guide.\nEvidence root (default directory): ${root}/evidence. Writable diagnostic copies: ${root}/work/head and ${root}/work/base. These copies persist across native tool calls in this stage. Run diagnostics with shell workdir set to the appropriate copy. The VM sandbox has no network or credentials; installed Rust, Node, Bun and offscreen/software Qt tooling are available. Report diagnostic modifications and their effect on conclusions. Check optional paths with glob before read. ${request.completeness ? "The non-authoritative completeness assessment is available as completeness.json." : ""}`,
+      prompt: `Stage: ${request.phase}. Start at REVIEW.md, then follow its route. Required guides: ${requiredGuides(!!item.pr).join(", ")}; issues also require the final classification's type guide. Read REPORT.md before returning JSON.\nRequired native reads: ${requiredEvidence.join(", ")}. Open other evidence only as needed.\nEvidence root (default directory): ${root}/evidence. Persistent writable diagnostic copies: ${root}/work/head and ${root}/work/base; set shell workdir explicitly. Installed Rust, Node, Bun and offscreen/software Qt are available; no network or credentials. ${request.completeness ? "Prior completeness is context, not proof: completeness.json." : ""}`,
     })).pipe(Effect.provideService(References.CurrentLoggers, new Set())), { signal: abort.signal })
     const messages = result.messages.messages
     const assistants = messages.filter(m => m.type === "assistant")
@@ -112,18 +115,11 @@ export async function guest(input: unknown) {
     const tools = assistants.flatMap(m => m.content.filter(c => c.type === "tool"))
     const inspected = new Set(tools.filter(t => t.name === "read" && t.state.status === "completed")
       .map(t => path.relative(`${root}/evidence`, path.resolve(`${root}/evidence`, String((t.state as { input: Record<string, unknown> }).input.path)))))
-    const item = JSON.parse(await readFile(target("input.json"), "utf8"))
-    const criteria = ["base/AGENTS.md", ...(item.pr ? ["base/CONTRIBUTING.md"] : [])].filter(n => Object.hasOwn(request.files, n))
-    const missingEvidence = ["input.json", ...(item.changes ? ["changes.json"] : []), ...criteria].filter(name => !inspected.has(name))
+    const missingEvidence = requiredEvidence.filter(name => !inspected.has(name))
     if (missingEvidence.length) throw new Pause(`Required evidence was not inspected through native read: ${missingEvidence.join(", ")}`)
     const pages = new Set(tools.filter(t => t.name === "curator_guide" && t.state.status === "completed").map(t => (t.state as { input: Record<string, unknown> }).input.page))
-    const required = ["REVIEW.md", "REPORT.md", item.pr ? "PRS.md" : "ISSUES.md", ...(item.pr ? ["EVIDENCE.md"] : [])]
-    if (required.some(page => !pages.has(page))) throw new Pause("Required runtime guides were not read")
-    if (!item.pr) {
-      const route = output.kind === "bug" ? "ISSUE-BUGS.md" : output.kind === "feature" ? output.scope === "routine" ? "ISSUE-CHANGES.md" : "ISSUE-FEATURES.md" : "ISSUE-SUPPORT.md"
-      const missing = [route, "EVIDENCE.md", ...(output.issue_decision ? ["SCOPE.md"] : [])].filter(page => !pages.has(page))
-      if (missing.length) throw new Pause(`Required issue guidance was not read: ${missing.join(", ")}`)
-    }
+    const missingGuides = requiredGuides(!!item.pr, output).filter(page => !pages.has(page))
+    if (missingGuides.length) throw new Pause(`Required runtime guides were not read: ${missingGuides.join(", ")}`)
     const failed = unresolvedTools(tools, root)
     if (failed.length && ["continue", "ready"].includes(output.state)) throw new Pause(`Tool failure cannot yield a passing gate: ${failed.map(t => t.name).join(", ")}`)
     const after = await inventory(work, before)

@@ -1,11 +1,12 @@
 import path from "node:path"
 import { Pause, type Config, type Document } from "./policy.ts"
-import { checked, bounded } from "./io.ts"
+import { checked } from "./io.ts"
 import { Checkpoints } from "./state.ts"
 import type { GitHub } from "./github.ts"
 import type { Snapshot } from "./snapshot.ts"
 import type { ChangeContext } from "./changes.ts"
 import { mediaType, sampleRecording } from "./media.ts"
+import { downloadMedia, mediaLinks, supportedMedia } from "./attachments.ts"
 
 const env = { PATH: process.env.PATH, HOME: "/nonexistent", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_TERMINAL_PROMPT: "0", LANG: "C.UTF-8" }
 const command = (args: string[], input?: string) => checked(args, { env, input, timeout: 180_000 })
@@ -18,24 +19,6 @@ export function updateEvidenceCI(files: Record<string, string>, snap: Snapshot) 
   input.ci = { path: "ci.json", status, workflows: snap.ci.length, jobs: snap.ci.reduce((n, run) => n + run.jobs.length, 0) }
   files["ci.json"] = Buffer.from(JSON.stringify(snap.ci, null, 2)).toString("base64")
   files["input.json"] = Buffer.from(JSON.stringify(input, null, 2)).toString("base64")
-}
-
-async function attachment(url: string) {
-  const origins = new Set(["github.com", "user-attachments.githubusercontent.com", "github-production-user-asset-6210df.s3.amazonaws.com"])
-  for (let count = 0; count < 6; count++) {
-    const parsed = new URL(url)
-    if (parsed.protocol !== "https:" || !origins.has(parsed.hostname) || parsed.username || parsed.password || parsed.port) throw new Error("Attachment redirect origin rejected")
-    const response = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(60_000) })
-    if (response.status >= 300 && response.status < 400) {
-      await response.body?.cancel()
-      const next = response.headers.get("location")
-      if (!next) throw new Error("Attachment redirect missing")
-      url = new URL(next, url).href; continue
-    }
-    if (!response.ok) { await response.body?.cancel(); throw new Error(`Attachment HTTP ${response.status}`) }
-    return bounded(response.body, 32 * 1024 * 1024)
-  }
-  throw new Error("Too many attachment redirects")
 }
 
 export async function collect(snap: Snapshot, config: Config, directory: string, checkpoints: Checkpoints, api: GitHub, changes?: ChangeContext) {
@@ -143,19 +126,24 @@ export async function collect(snap: Snapshot, config: Config, directory: string,
       context.delta = { from: previousHead, to: revisions.head, path: "delta.patch", equivalent_tree: !delta.length }
     } catch (error) { context.delta = { unavailable: String(error), requirement: "Reassess from the full diff; do not assume unchanged evidence." } }
   }
-  const urls = [...new Set(JSON.stringify(context).match(/https:\/\/github\.com\/user-attachments\/assets\/[0-9a-f-]{36}/g) ?? [])].sort()
   const descriptions = [snap.item.body ?? "", ...events.map(event => event.body ?? "")]
+  const urls = mediaLinks(descriptions)
   for (const [index, url] of urls.entries()) {
     const asset: Document = { url }
+    let status = !supportedMedia(url) ? "unsupported-url" : index >= 64 ? "collection-limit" : "download-failed"
     try {
-      const data = await attachment(url)
+      if (status === "unsupported-url") throw new Error("Unsupported media URL; curator did not try downloading it")
+      if (status === "collection-limit") throw new Error("Only the first 64 linked media assets are collected")
+      const data = await downloadMedia(url)
+      status = "decode-failed"
       const type = mediaType(data)
       if (type === "png" || type === "jpg") { const name = `assets/${index}.${type}`; files[name] = data.toString("base64"); asset.path = name }
       else {
         const sampled = await sampleRecording(data, type, index, directory, descriptions.filter(text => text.includes(url)))
         Object.assign(files, sampled.files); Object.assign(asset, sampled.metadata)
       }
-    } catch (error) { asset.unavailable = String(error).slice(0, 200) }
+      asset.status = "available"
+    } catch (error) { asset.status = status; asset.unavailable = String(error).slice(0, 200) }
     context.assets.push(asset)
   }
   for (const key of ["discussion", "ci", "previous", "assets"]) {

@@ -12,6 +12,7 @@ const validEtag = (value: unknown): value is string => typeof value === "string"
 export class GitHubBackoff extends Pause {
   constructor(readonly until: number, reason: string) { super(`GitHub ${reason}; retry after ${new Date(until).toISOString()}`) }
 }
+export class GitHubTransient extends Pause {}
 
 export class GitHub {
   readonly prefix: string
@@ -79,41 +80,57 @@ export class GitHub {
   }
   async request(method: string, path: string, payload?: unknown): Promise<any> {
     if (!path.startsWith(this.prefix + "/") && !(method === "GET" && path === "/user")) throw new Pause("GitHub repository boundary violation")
+    for (let attempt = 0; ; attempt++) {
+      try { return await this.requestOnce(method, path, payload) }
+      catch (error) {
+        // Writes may have succeeded despite a lost response. Let the publisher
+        // discover/reconcile them on the next sweep rather than retrying blindly.
+        if (!(error instanceof GitHubTransient) || method !== "GET" || attempt >= 2) throw error
+        await Bun.sleep(250 * 4 ** attempt)
+      }
+    }
+  }
+  private async requestOnce(method: string, path: string, payload?: unknown): Promise<any> {
     await this.available()
     const cacheKey = "response-" + digest(path)
     const saved = method === "GET" ? await this.read(cacheKey, true) : null
     const cached: Cached | null = saved?.path === path && validEtag(saved.etag) && Object.hasOwn(saved, "data") ? saved : null
+    let response: Response
+    this.usage.requests++
     try {
-      this.usage.requests++
-      const response = await fetch("https://api.github.com" + path, { method, redirect: "error", signal: AbortSignal.timeout(60_000),
+      response = await fetch("https://api.github.com" + path, { method, redirect: "error", signal: AbortSignal.timeout(60_000),
         headers: { Authorization: `Bearer ${this.token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "omamail-curator", "Content-Type": "application/json",
           ...(cached ? { "If-None-Match": cached.etag } : {}) },
         body: payload === undefined ? undefined : JSON.stringify(payload) })
-      if (!response.ok && response.status !== 304) {
-        // Error bodies are used only to classify throttling, never logged or cached.
-        const detail = (await bounded(response.body, 1024 * 1024)).toString()
-        await this.responseRate(response, detail)
-        throw new Pause(`GitHub HTTP ${response.status}: ${method} ${path}`)
-      }
-      await this.responseRate(response, "")
-      if (response.status === 304) {
-        await response.body?.cancel()
-        if (!cached) throw new Pause("GitHub returned 304 without a cached response")
-        this.usage.not_modified++
-        return cached.data
-      }
-      const bytes = await bounded(response.body, 32 * 1024 * 1024)
-      const data = bytes.length ? JSON.parse(bytes.toString()) : null
-      if (method === "GET" && this.directory) {
-        const etag = response.headers.get("etag")
-        if (validEtag(etag)) await this.write(cacheKey, { path, etag, data })
-        else await rm(fsPath.join(this.directory, cacheKey + ".json"), { force: true })
-      }
-      return data
-    } catch (error) {
-      if (error instanceof Pause) throw error
-      throw new Pause("GitHub transport/JSON failure")
+    } catch { throw new GitHubTransient(`GitHub transport failure: ${method} ${path}`) }
+    const body = async (limit: number) => {
+      try { return await bounded(response.body, limit) }
+      catch (error) { if (error instanceof Pause) throw error; throw new GitHubTransient(`GitHub response interrupted: ${method} ${path}`) }
     }
+    if (!response.ok && response.status !== 304) {
+      // Error bodies classify throttling; they are never logged or cached.
+      const detail = (await body(1024 * 1024)).toString()
+      await this.responseRate(response, detail)
+      if ([500, 502, 503, 504].includes(response.status)) throw new GitHubTransient(`GitHub HTTP ${response.status}: ${method} ${path}`)
+      throw new Pause(`GitHub HTTP ${response.status}: ${method} ${path}`)
+    }
+    await this.responseRate(response, "")
+    if (response.status === 304) {
+      await response.body?.cancel()
+      if (!cached) throw new Pause("GitHub returned 304 without a cached response")
+      this.usage.not_modified++
+      return cached.data
+    }
+    const bytes = await body(32 * 1024 * 1024)
+    let data
+    try { data = bytes.length ? JSON.parse(bytes.toString()) : null }
+    catch { throw new Pause("GitHub returned invalid JSON") }
+    if (method === "GET" && this.directory) {
+      const etag = response.headers.get("etag")
+      if (validEtag(etag)) await this.write(cacheKey, { path, etag, data })
+      else await rm(fsPath.join(this.directory, cacheKey + ".json"), { force: true })
+    }
+    return data
   }
   get(path: string) { return this.request("GET", this.prefix + path) }
   mutate(method: string, path: string, payload?: unknown) { return this.request(method, this.prefix + path, payload) }

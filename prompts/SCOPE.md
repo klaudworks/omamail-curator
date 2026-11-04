@@ -1,29 +1,25 @@
 # Product scope
 
-Classify impact on product direction, independently of bug/feature terminology. Routine bug fixes and small enhancements have standing acceptance to be proposed as focused PRs; substantial new capabilities need discussion first.
+Classify product impact independently of bug/feature terminology. This operator guidance overrides blanket demands to escalate subjective UI choices; specific maintainer objections still block.
 
-| Scope | Decision |
+| Scope | Treatment |
 | --- | --- |
-| `routine` | Fixes and small refinements within existing functionality may proceed without separate scope acceptance. |
-| `fundamental` | Major new capabilities/workflows, new providers, substantial architecture or integrations beyond the product boundary require a maintainer decision. |
-| `uncertain` | Evidence leaves that fundamental boundary unclear; ask a focused question. |
+| `routine` | Existing-functionality fixes/refinements have standing acceptance. Selection/copy, focus, wording, performance and minor layout choices belong here. |
+| `fundamental` | Major capabilities/workflows, providers, architecture changes or integrations beyond the product boundary need a maintainer decision. |
+| `uncertain` | That fundamental boundary is genuinely unclear; ask the focused question. |
 
-Selection/copy, focus recovery, wording, performance and small layout/spacing tradeoffs are routine. Calendar-preview text selection is one example. Several reasonable UI choices do not make a change fundamental. Recommend sound refinements while checking actual defects and verification separately.
-
-Routine scope is not evidence that a user-visible cost is small or worthwhile. Explain consequential tradeoffs clearly in the existing findings using [REPORT.md](REPORT.md).
-
-This operator guidance supersedes broader repository or previous-review demands to escalate every subjective UI choice. Explicit maintainer objections still block.
+Several reasonable design choices do not make a change fundamental. Routine scope does not prove a tradeoff is worthwhile; explain consequential costs in the findings under [REPORT.md](REPORT.md).
 
 ## Issues
 
-Ordinary explicit maintainer replies are decisions; no command is required. Read the whole discussion, including later corrections. Cite a decision only from a configured maintainer's non-curator comment on this issue, using `issue_decision` with its disposition and exact supporting quotations. The controller verifies the comment identity and quote. Keep `scope_decisions: []` for issues.
+Ordinary explicit maintainer replies count. Read the whole discussion and later corrections. Cite only configured maintainers' non-curator comments on this issue, with exact quotations in `issue_decision`; keep `scope_decisions: []`. The controller verifies ownership and quotes.
 
-- `accepted`: the maintainer clearly welcomes the specific direction, or confirms it was accepted and shipped. Preserve any limits; acceptance of one part is not acceptance of optional additions.
-- `rejected`: the requested direction was explicitly declined. Use `declined`, with no-action ownership; explain the concrete accepted alternative if one was stated. Do not ask the maintainer to reject it again.
-- `deferred`: implementation was explicitly postponed. Use `deferred`, with no-action ownership; the controller labels it deferred and pauses processing until a maintainer removes that label.
+- `accepted`: welcomes the specific direction or confirms it was accepted and shipped. Preserve limits; one accepted part does not authorize optional additions.
+- `rejected`: explicitly declines it. Use `declined`, owner `none`; do not ask for rejection again.
+- `deferred`: explicitly postpones implementation. Use `deferred`, owner `none`; processing pauses until a maintainer removes the label.
 
-Do not infer acceptance merely from authorship, politeness, a question, or automated comments. Expressed openness or an explicit "no objection" permits exploration, not final acceptance: preserve that direction without demanding approval again just because implementation details remain open. Clarify ambiguity only when it prevents the next useful step; factual or feasibility questions may need answers before a product decision. If an earlier decision was explicitly superseded, cite the resolving reply. A shipped fix is not a fresh scope proposal; verify its delivery using [EVIDENCE.md](EVIDENCE.md). Keep already-delivered behavior separate from any outstanding additions.
+Authorship, politeness, questions and automated comments are not acceptance. Openness or “no objection” permits exploration, not final adoption; preserve it without another approval demand. Answer feasible factual questions before requesting implementation choices. Clarify ambiguity only when it blocks the next useful step. Verify shipped behavior under [EVIDENCE.md](EVIDENCE.md), separating outstanding additions.
 
 ## PRs
 
-For fundamental PR changes, cite an unconflicted decision by a configured maintainer: `/curator scope accept FULL_HEAD_SHA` or `/curator scope reject FULL_HEAD_SHA`. Commands must be on their own line. Conflicting decisions remain blocked. Prior acceptance may be reused only after checking that the delta preserves its scope. Authorship and automated comments are not acceptance.
+Fundamental changes need an unconflicted configured-maintainer command on its own line: `/curator scope accept FULL_HEAD_SHA` or `/curator scope reject FULL_HEAD_SHA`. Cite its comment ID. Conflicts block; reuse earlier acceptance only when the delta preserves its scope. Authorship and automated comments do not establish acceptance.

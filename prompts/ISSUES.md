@@ -8,6 +8,3 @@ Read the report and discussion, then open the guide matching the remaining reque
 | Small enhancement within existing functionality | [ISSUE-CHANGES.md](ISSUE-CHANGES.md) |
 | Large feature, new integration/workflow, or unclear product boundary | [ISSUE-FEATURES.md](ISSUE-FEATURES.md) |
 | Usage question or unclear intended behavior | [ISSUE-SUPPORT.md](ISSUE-SUPPORT.md) |
-| Every issue: evidence standards and accessible verification | [EVIDENCE.md](EVIDENCE.md) |
-| Interpret an existing maintainer direction | [SCOPE.md](SCOPE.md) |
-| Write the response | [REPORT.md](REPORT.md) |

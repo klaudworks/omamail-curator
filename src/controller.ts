@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { randomBytes } from "node:crypto"
 import path from "node:path"
 import { parseArgs } from "node:util"
-import { GitHub, GitHubBackoff } from "./github.ts"
+import { GitHub, GitHubBackoff, GitHubTransient } from "./github.ts"
 import { Checkpoints } from "./state.ts"
 import { Completeness } from "./completeness.ts"
 import { Relevance, type Completed } from "./relevance.ts"
@@ -11,7 +11,7 @@ import { snapshot, validateScope, type Snapshot } from "./snapshot.ts"
 import { collect, updateEvidenceCI } from "./evidence.ts"
 import { reviewBasis } from "./changes.ts"
 import { run } from "./io.ts"
-import { contractVersion, MODELS, Pause, Stop, assessment, eligible, readConfig, type Config, type Phase, type Assessment } from "./policy.ts"
+import { contractVersion, MODELS, Pause, Stop, CIWait, assessment, eligible, readConfig, type Config, type Phase, type Assessment } from "./policy.ts"
 
 async function model(config: Config, files: Record<string, string>, phase: Phase, logdir: string, completeness?: Assessment) {
   const response = await run([...config.transport], { input: JSON.stringify({ phase, host_time: Date.now() / 1000, files, completeness }) })
@@ -43,6 +43,7 @@ export async function processItem(api: GitHub, config: Config, checkpoints: Chec
     try { snap = await publisher.fresh(snap, false, true, polling) }
     catch (error) {
       if (error instanceof Stop && !dryRun) await publisher.invalidate(await api.get(`/issues/${number}`))
+      if (error instanceof CIWait && !dryRun) await publisher.progress(snap, error.progress)
       throw error
     }
   }
@@ -71,7 +72,7 @@ export async function processItem(api: GitHub, config: Config, checkpoints: Chec
       return { ...await finish(reusable, pending.comment), reused: true, models_started: 0 }
     }
   }
-  if (snap.previous?.contract_version === contractVersion(!!snap.pr) && snap.previous.fingerprint === snap.fingerprint) {
+  if (snap.previous?.contract_version === contractVersion(!!snap.pr) && snap.previous.fingerprint === snap.fingerprint && !await relevance.needsEvidenceReview(snap)) {
     if (snap.previous.phase === "final") await finalGate(true)
     const completed = await relevance.restore(snap, { assessment: snap.previous.assessment, phase: snap.previous.phase, sessions: snap.previous.sessions })
     if (completed) {
@@ -99,6 +100,7 @@ export async function processItem(api: GitHub, config: Config, checkpoints: Chec
   }
   if (retained) await finalGate()
   if (!dryRun) await publisher.invalidate(snap.item)
+  if (!dryRun) await publisher.progress(snap, retained ? "Reviewing the current changes." : "Checking completeness.")
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z")
   const logdir = path.join(config.state_dir, "runs", `${stamp}-${number}-${randomBytes(3).toString("hex")}`)
   await mkdir(logdir, { recursive: true, mode: 0o700 })
@@ -121,6 +123,7 @@ export async function processItem(api: GitHub, config: Config, checkpoints: Chec
         return stopped
       }
       updateEvidenceCI(files, snap)
+      if (!dryRun) await publisher.progress(snap, "Completeness passed; reviewing the current changes.")
       const final = await model(config, files, "final", logdir, result)
       if (final.provenance.session === completeness.provenance.session) throw new Pause("Final review must use a fresh session")
       result = validateScope(final.result, snap, config, checkpoints); phase = "final"; sessions.push(final.provenance)
@@ -158,7 +161,10 @@ async function main() {
     for (const item of items) {
       if (!number) { try { eligible(item, config) } catch (error) { if (error instanceof Stop) continue; throw error } }
       try { console.log(JSON.stringify(await processItem(api, config, checkpoints, item.number, values["dry-run"], values["gate-only"]))) }
-      catch (error) { if (!(error instanceof Stop)) throw error; console.log(JSON.stringify({ number: item.number, state: "stopped", reason: error.message, models_started: 0 })) }
+      catch (error) {
+        if (!(error instanceof Stop) && !(error instanceof GitHubTransient)) throw error
+        console.log(JSON.stringify({ number: item.number, state: error instanceof GitHubTransient ? "retry-later" : "stopped", reason: error.message }))
+      }
     }
   } finally {
     console.log(JSON.stringify({ state: "github-usage", ...api.usage, rate_limit: api.rateLimit }))

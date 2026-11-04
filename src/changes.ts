@@ -37,3 +37,20 @@ export function changeContext(before: ReviewInput | null, current: ReviewInput, 
       outstanding_questions: previous?.assessment.blockers ?? [], next_step: previous?.assessment.next_step ?? null } }
 }
 export type ChangeContext = ReturnType<typeof changeContext> & { code?: Document; routing?: { stage: Phase; reason: string } }
+
+// Lossless delta encoding for the small decider. The reviewer still receives
+// the ordinary context; no old discussion or changed text is truncated.
+export function decisionContext(context: ChangeContext) {
+  const before = context.last_fully_reviewed
+  if (!before) return context
+  const current: Document = { discussion: context.current.discussion }
+  const unchanged: string[] = []
+  for (const key of ["title", "body", "author", "head", "base"] as const) {
+    if (canonical(before[key]) === canonical(context.current[key])) unchanged.push(key)
+    else current[key] = context.current[key]
+  }
+  return { ...context, current: { ...current, unchanged_fields: unchanged },
+    encoding: "current.unchanged_fields retain their exact last_fully_reviewed values. Apply discussion_changes to its discussion; edited.before is the entry with the same id.",
+    discussion_changes: context.discussion_changes && { ...context.discussion_changes,
+      edited: context.discussion_changes.edited.map(e => ({ id: e.after.id, after: e.after })) } }
+}

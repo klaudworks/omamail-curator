@@ -3,6 +3,9 @@ import { Schema } from "effect"
 
 export class Stop extends Error {}
 export class Pause extends Error {}
+export class CIWait extends Stop {
+  constructor(reason: string, readonly progress = "Completeness passed; waiting for successful CI.") { super(reason) }
+}
 export type Phase = "completeness" | "final"
 export const CONTRACT_VERSION = 12
 export const ISSUE_CONTRACT_VERSION = 14
@@ -93,8 +96,10 @@ export function successfulRun(pr: Document, workflow: Document, workflowPath: st
   const candidates = workflow.runs.filter((run: Document) => run.workflow_id === workflow.id && run.event === "pull_request" && run.head_sha === pr.head.sha &&
     (run.pull_requests?.length ? run.pull_requests.some((p: Document) => p.number === pr.number) : run.head_repository?.id === pr.head.repo.id && run.head_branch === pr.head.ref))
   const run = candidates.sort((a: Document, b: Document) => b.run_number - a.run_number || b.run_attempt - a.run_attempt)[0]
-  if (!run) throw new Stop(`CI missing: ${workflowPath}`)
-  if (run.status !== "completed" || run.conclusion !== "success") throw new Stop(`CI not successful: ${workflowPath} (${run.status}/${run.conclusion})`)
+  if (!run) throw new CIWait(`CI missing: ${workflowPath}`, "Completeness passed; waiting for CI to start.")
+  if (run.status !== "completed" || run.conclusion !== "success") throw new CIWait(`CI not successful: ${workflowPath} (${run.status}/${run.conclusion})`,
+    run.conclusion === "action_required" ? "Completeness passed; a maintainer must approve the CI workflows." :
+      run.status === "completed" ? "Completeness passed; CI needs attention before final review." : "Completeness passed; waiting for CI to finish.")
   return run as Document
 }
 
@@ -103,8 +108,8 @@ export function successfulRuns(pr: Document, workflows: Record<string, Document>
     const source = workflows[spec.path], run = successfulRun(pr, source, spec.path)
     const latest = new Map<string, Document>()
     for (const job of source.jobs[String(run.id)] ?? []) if (!latest.has(job.name) || job.id > latest.get(job.name)!.id) latest.set(job.name, job)
-    if (!latest.size || [...latest.values()].some(j => j.status !== "completed" || j.conclusion !== "success")) throw new Stop(`CI job missing or unsuccessful: ${spec.path}`)
-    for (const pattern of spec.jobs) if (![...latest.keys()].some(name => new RegExp(`^(?:${pattern})$`).test(name))) throw new Stop(`CI expected job missing: ${pattern}`)
+    if (!latest.size || [...latest.values()].some(j => j.status !== "completed" || j.conclusion !== "success")) throw new CIWait(`CI job missing or unsuccessful: ${spec.path}`)
+    for (const pattern of spec.jobs) if (![...latest.keys()].some(name => new RegExp(`^(?:${pattern})$`).test(name))) throw new CIWait(`CI expected job missing: ${pattern}`)
     return { path: spec.path, id: run.id, attempt: run.run_attempt, sha: run.head_sha, url: run.html_url, status: run.status, conclusion: run.conclusion,
       jobs: [...latest.values()].sort((a, b) => a.name < b.name ? -1 : 1).map(({ id, name, status, conclusion }) => ({ id, name, status, conclusion })) }
   })
