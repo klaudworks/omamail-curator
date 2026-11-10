@@ -3,14 +3,11 @@ import { Schema } from "effect"
 
 export class Stop extends Error {}
 export class Pause extends Error {}
-export class CIWait extends Stop {
-  constructor(reason: string, readonly progress = "Completeness passed; waiting for successful CI.") { super(reason) }
-}
-export type Phase = "completeness" | "final"
-export const CONTRACT_VERSION = 12
+export type Phase = "completeness" | "review"
+export const CONTRACT_VERSION = 13
 export const ISSUE_CONTRACT_VERSION = 14
 export const contractVersion = (pullRequest: boolean) => pullRequest ? CONTRACT_VERSION : ISSUE_CONTRACT_VERSION
-export const MODELS = { completeness: "openai/gpt-6.1-terra#medium", final: "openai/gpt-6.1-sol#xhigh" }
+export const MODELS = { completeness: "openai/gpt-6.1-terra#medium", review: "openai/gpt-6.1-sol#xhigh" }
 export const LABELS = new Set(["needs-information", "needs-maintainer-decision", "review-ready", "review-blocked"])
 export const ISSUE_LABELS = { bug: "bug", feature: "enhancement", disputed: "question", support: "question" } as const
 
@@ -48,14 +45,22 @@ export function readConfig(value: unknown) {
 }
 
 const text = (min: number, max: number) => Schema.String.check(Schema.isMinLength(min), Schema.isMaxLength(max))
+const FindingSchema = Schema.Struct({
+  id: text(2, 16), status: Schema.Literals(["open", "resolved", "withdrawn"]),
+  concern: text(10, 600), resolution: text(10, 800), evidence: text(10, 1200),
+})
+export type FindingUpdate = typeof FindingSchema.Type
 const AssessmentSchema = Schema.Struct({
   kind: Schema.Literals(["bug", "feature", "disputed", "support"]),
   scope: Schema.Literals(["routine", "fundamental", "uncertain"]),
   state: Schema.Literals(["continue", "needs-information", "needs-maintainer-decision", "blocked", "ready", "handoff", "support", "verified-fixed", "declined", "deferred"]),
-  summary: text(20, 400), findings: Schema.Array(text(1, 400)).check(Schema.isMinLength(1), Schema.isMaxLength(3)),
+  summary: text(20, 400), findings: Schema.Array(text(1, 800)).check(Schema.isMinLength(1)),
   next_step: Schema.Struct({ owner: Schema.Literals(["author", "maintainer", "none"]), action: text(10, 600) }),
   security: Schema.Literals(["PASS", "BLOCK", "NOT VERIFIED"]), blockers: Schema.Array(Schema.String),
   scope_decisions: Schema.Array(Schema.Int), malicious: Schema.Boolean,
+  review_depth: Schema.optional(Schema.Literals(["intake", "thorough"])),
+  finding_updates: Schema.optional(Schema.Array(FindingSchema).check(Schema.isMaxLength(40))),
+  ci_assessment: Schema.optional(Schema.Array(Schema.Struct({ key: text(1, 400), relevance: Schema.Literals(["relevant", "unrelated", "uncertain"]), evidence: text(20, 1200) }))),
   issue_decision: Schema.optional(Schema.Struct({
     disposition: Schema.Literals(["accepted", "rejected", "deferred"]),
     comments: Schema.Array(Schema.Struct({ id: Schema.Int, quote: text(10, 1500) })).check(Schema.isMinLength(1), Schema.isMaxLength(5)),
@@ -71,8 +76,17 @@ export function assessment(value: unknown, phase: Phase): Assessment {
   if (["needs-information", "needs-maintainer-decision", "blocked", "ready"].includes(state) && next_step.owner === "none") throw new Pause("Actionable states must name who acts next")
   if (["needs-maintainer-decision", "ready"].includes(state) && next_step.owner !== "maintainer") throw new Pause("Maintainer state requires a maintainer next step")
   if (malicious && state !== "blocked") throw new Pause("Detected attack must stop the item")
-  if (state === "ready" && (phase !== "final" || security !== "PASS" || blockers.length)) throw new Pause("Readiness requires a final unblocked security pass")
-  if (state === "continue" && (phase !== "completeness" || blockers.length || malicious)) throw new Pause("Invalid stage continuation")
+  if (state === "ready" && (phase !== "review" || result.review_depth !== "thorough" || security !== "PASS" || blockers.length)) throw new Pause("Readiness requires a thorough unblocked security pass")
+  if (state === "continue") throw new Pause("Separate PR completeness continuation is retired")
+  if (phase === "review") {
+    if (!["needs-information", "needs-maintainer-decision", "blocked", "ready"].includes(state)) throw new Pause("Invalid PR review disposition")
+    if (!result.review_depth || !result.finding_updates || !result.ci_assessment) throw new Pause("PR review needs depth, finding updates and CI assessment")
+    if (result.review_depth === "intake" && !["needs-information", "needs-maintainer-decision", "blocked"].includes(state)) throw new Pause("Early stop needs a substantive blocker")
+    if (result.review_depth === "intake" && security === "PASS") throw new Pause("Early intake cannot claim a completed security review")
+    if (result.finding_updates.some(f => !/^F[1-9]\d*$/.test(f.id)) || new Set(result.finding_updates.map(f => f.id)).size !== result.finding_updates.length) throw new Pause("Invalid or duplicate finding IDs")
+    if (state === "ready" && result.finding_updates.some(f => f.status === "open")) throw new Pause("Ready review has open findings")
+    if (["needs-information", "blocked"].includes(state) && !blockers.length) throw new Pause("Blocked or incomplete review needs explicit blockers")
+  } else if (result.review_depth || result.finding_updates || result.ci_assessment) throw new Pause("PR review fields on issue triage")
   if (result.author_prompt?.includes("```")) throw new Pause("Author prompt must not contain Markdown fences")
   return result
 }
@@ -90,27 +104,4 @@ export function eligible(item: Document, config: Config) {
   if (item.repository_url !== `https://api.github.com/repos/${config.repository}`) throw new Stop("repository mismatch")
   if (!authorAllowed(item, config, !!item.pull_request)) throw new Stop("item not enrolled for this author")
   if (item.state !== "open" || item.locked) throw new Stop("item closed or locked")
-}
-
-export function successfulRun(pr: Document, workflow: Document, workflowPath: string) {
-  const candidates = workflow.runs.filter((run: Document) => run.workflow_id === workflow.id && run.event === "pull_request" && run.head_sha === pr.head.sha &&
-    (run.pull_requests?.length ? run.pull_requests.some((p: Document) => p.number === pr.number) : run.head_repository?.id === pr.head.repo.id && run.head_branch === pr.head.ref))
-  const run = candidates.sort((a: Document, b: Document) => b.run_number - a.run_number || b.run_attempt - a.run_attempt)[0]
-  if (!run) throw new CIWait(`CI missing: ${workflowPath}`, "Completeness passed; waiting for CI to start.")
-  if (run.status !== "completed" || run.conclusion !== "success") throw new CIWait(`CI not successful: ${workflowPath} (${run.status}/${run.conclusion})`,
-    run.conclusion === "action_required" ? "Completeness passed; a maintainer must approve the CI workflows." :
-      run.status === "completed" ? "Completeness passed; CI needs attention before final review." : "Completeness passed; waiting for CI to finish.")
-  return run as Document
-}
-
-export function successfulRuns(pr: Document, workflows: Record<string, Document>, config: Config) {
-  return config.pipelines.map(spec => {
-    const source = workflows[spec.path], run = successfulRun(pr, source, spec.path)
-    const latest = new Map<string, Document>()
-    for (const job of source.jobs[String(run.id)] ?? []) if (!latest.has(job.name) || job.id > latest.get(job.name)!.id) latest.set(job.name, job)
-    if (!latest.size || [...latest.values()].some(j => j.status !== "completed" || j.conclusion !== "success")) throw new CIWait(`CI job missing or unsuccessful: ${spec.path}`)
-    for (const pattern of spec.jobs) if (![...latest.keys()].some(name => new RegExp(`^(?:${pattern})$`).test(name))) throw new CIWait(`CI expected job missing: ${pattern}`)
-    return { path: spec.path, id: run.id, attempt: run.run_attempt, sha: run.head_sha, url: run.html_url, status: run.status, conclusion: run.conclusion,
-      jobs: [...latest.values()].sort((a, b) => a.name < b.name ? -1 : 1).map(({ id, name, status, conclusion }) => ({ id, name, status, conclusion })) }
-  })
 }

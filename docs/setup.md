@@ -62,7 +62,7 @@ bun src/controller.ts --config /private/config.json --item NUMBER --gate-only
 bun src/controller.ts --config /private/config.json --item NUMBER --dry-run
 ```
 
-`--gate-only` checks eligibility and current-head CI without starting a model. `--dry-run` assesses changed inputs without publishing; unchanged inputs can reuse a signed checkpoint. Check the reported outcome as well as the exit code.
+`--gate-only` checks eligibility and observes current-head CI without starting a model; pending, missing or failed CI does not make an eligible item ineligible. `--dry-run` assesses changed inputs without publishing; unchanged inputs can reuse a signed checkpoint. Check the reported outcome as well as the exit code.
 
 ## 4. Enable scheduling
 
@@ -78,9 +78,9 @@ journalctl --user -u omamail-curator.service -n 30
 
 Sweeps run every five minutes, oldest first and sequentially. A long review delays later items. Verify a completed sweep and its published outcome; an active timer alone does not establish that reviews work.
 
-Completeness runs independently of CI progress. A pass is saved while the current commit waits for CI; final review and final-assessment publication still require all configured pipelines/jobs to succeed. Completeness comments can request missing prerequisites before those pipelines finish. Provision the repository label `review-blocked` for concrete defects/attacks; `needs-maintainer-decision` remains for product choices.
+PRs use one review session: scan essential inputs, batch substantial gaps and stop early if needed, otherwise investigate thoroughly. Hosted CI is collected and disclosed but never gates review. The reviewer must assess every reported failure; relevant or uncertain failures cannot yield readiness. Provision `review-blocked` for concrete defects/attacks; `needs-maintainer-decision` remains for product choices. Describe `review-ready` as “No review blockers at the stated SHA; CI reported separately; human disposition required.”
 
-One signed PR progress comment is updated in place as completeness, CI waits and final review advance. It distinguishes workflow approval, CI execution and failed checks; after assessment it links to the result and next owner. It does not create a commit status or count as human discussion. Unchanged progress adds no write.
+One signed PR progress comment is updated in place during review and afterward with the assessment, next owner and CI observation. It creates no commit status and is excluded from human discussion. Unchanged progress adds no write. PR contract 13 supersedes two-stage results once; issue contract 14 stays compatible. Old completeness files are unused; keep them for rollback. Findings persist in pending/baseline records and signed checkpoints rather than another database.
 
 The evidence collector accepts PNG/JPEG images and MP4/GIF recordings from GitHub attachments, release downloads, repository raw content and raw Gists. Redirects are limited to approved GitHub asset origins. The index distinguishes unsupported URLs, collection limits, download failures and decode failures; these are collector limitations, not absent contributor evidence. At most 64 linked assets are attempted. Recordings are decoded with FFmpeg into at most eight full-duration overview positions plus 24 timestamps from descriptions/comments containing that asset, on a quarter-second grid. The index records frame times and omitted timestamps. Decoder timeouts, one-day duration, 1280×1280 frame bounds, 32 MiB downloaded/decoded asset limits and the overall package limit are ingestion bounds, not contributor verification requirements.
 

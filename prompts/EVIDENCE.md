@@ -6,7 +6,7 @@ Seek reasonable confidence proportional to the change's impact. Before asking a 
 
 Source reasoning, representative tests and current CI can be sufficient. Inspect supplied evidence before requesting more; use a small reviewer-side check when it can settle the question. Request only the smallest useful assertion, capture or measurement, naming the scenario and expected result. Keep resolved findings closed unless new evidence contradicts them.
 
-This operator standard overrides blanket repository or previous-review requirements for screenshots, recordings, full-suite receipts, manual testing and platform matrices. Contributors need not run anything by hand or test locally on macOS/Windows. Neither review stage runs or requires full `make test`, `make test-qml` or `make validate`. An older local-validation SHA alone is not a blocker. The controller still requires successful current-head CI before final review and publication; completeness is independent of CI. Green CI establishes only what its jobs actually check.
+This operator standard overrides blanket repository or previous-review requirements for screenshots, recordings, full-suite receipts, manual testing and platform matrices. Contributors need not run anything by hand or test locally on macOS/Windows. Do not run or require full `make test`, `make test-qml` or `make validate`. An older local-validation SHA alone is not a blocker. CI is evidence, not permission to review or recommend; investigate relevant failures, disclose incomplete verification and never assume an unexplained failure is unrelated. Green CI establishes only what its jobs actually check.
 
 ## Use the supplied evidence
 

@@ -1,6 +1,7 @@
 import { canonical, type Assessment, type Document, type Phase } from "./policy.ts"
 import type { Snapshot } from "./snapshot.ts"
 import type { Checkpoints } from "./state.ts"
+import type { Finding } from "./findings.ts"
 
 export function reviewInput(snap: Snapshot, checkpoints: Checkpoints) {
   return { title: snap.item.title, body: snap.item.body ?? "", author: snap.item.user.login, head: snap.pr?.head.sha ?? null, base: snap.pr?.base.sha ?? null,
@@ -27,13 +28,13 @@ export const reviewBasis = (snap: Snapshot, checkpoints: Checkpoints): ReviewBas
   anchor: snap.status_comment?.id ?? null, anchor_hash: snap.previous?.report_hash ?? null })
 
 export interface DiscussionRecheck { fingerprint: string; question: string; added: number[]; decision: Document }
-export interface PublicationContext { assessment_fingerprint: string; discussion_recheck?: DiscussionRecheck }
+export interface PublicationContext { assessment_fingerprint: string; discussion_recheck?: DiscussionRecheck; findings?: Finding[]; assessed_ci?: Snapshot["ci"] }
 
-export function changeContext(before: ReviewInput | null, current: ReviewInput, previous: { assessment: Assessment; phase: Phase } | null, completeness: Assessment | null) {
+export function changeContext(before: ReviewInput | null, current: ReviewInput, previous: { assessment: Assessment; phase: Phase } | null, findings: Finding[] = []) {
   return { previous_assessment: previous?.assessment ?? null, previous_phase: previous?.phase ?? null, last_fully_reviewed: before,
     current: { ...current, discussion: before ? "Apply discussion_changes to last_fully_reviewed.discussion; unchanged comments are not duplicated." : current.discussion },
     discussion_changes: before ? discussionChanges(before.discussion, current.discussion) : null,
-    workflow: { stage: current.head ? completeness ? "final" : "completeness" : "triage", completeness,
+    workflow: { stage: current.head ? "review" : "triage", findings,
       outstanding_questions: previous?.assessment.blockers ?? [], next_step: previous?.assessment.next_step ?? null } }
 }
 export type ChangeContext = ReturnType<typeof changeContext> & { code?: Document; routing?: { stage: Phase; reason: string } }

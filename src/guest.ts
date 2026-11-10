@@ -10,8 +10,8 @@ import { review } from "../reviewer/host.ts"
 import { MODELS, Pause, assessment } from "./policy.ts"
 import { guides, requiredGuides, SYSTEM } from "./prompts.ts"
 
-const Request = Schema.Struct({ phase: Schema.Literals(["completeness", "final"]), host_time: Schema.Number,
-  files: Schema.Record(Schema.String, Schema.String), completeness: Schema.optional(Schema.Unknown) })
+const Request = Schema.Struct({ phase: Schema.Literals(["completeness", "review"]), host_time: Schema.Number,
+  files: Schema.Record(Schema.String, Schema.String) })
 
 export function expectedSearchMiss(tool: AssistantTool, root: string): boolean {
   if (!["grep", "glob"].includes(tool.name) || tool.state.status !== "error") return false
@@ -90,7 +90,6 @@ export async function guest(input: unknown) {
       const names = Schema.decodeUnknownSync(Schema.Array(Schema.String))(JSON.parse(await readFile(target("source-executables.json"), "utf8")))
       for (const name of names) { if (!Object.hasOwn(request.files, name)) throw new Pause("Unsafe executable manifest"); await chmod(target(name), 0o755) }
     }
-    if (request.completeness) await writeFile(target("completeness.json"), JSON.stringify(request.completeness, null, 2))
     for (const name of ["head", "base"]) if (Object.keys(request.files).some(f => f.startsWith(name + "/"))) await cp(target(name), path.join(work, name), { recursive: true })
     const root = `/curator-review-${randomUUID()}`
     const sandbox = { root, evidence, work, data, bun: path.dirname(path.dirname(process.execPath)),
@@ -98,11 +97,12 @@ export async function guest(input: unknown) {
       toolchain: process.env.CURATOR_TOOLCHAIN ?? path.join(homedir(), ".local/share/omamail-curator/toolchain") }
     const item = JSON.parse(await readFile(target("input.json"), "utf8"))
     const criteria = ["base/AGENTS.md", ...(item.pr ? ["base/CONTRIBUTING.md"] : [])].filter(n => Object.hasOwn(request.files, n))
-    const requiredEvidence = ["input.json", ...(item.changes ? ["changes.json"] : []), ...criteria]
+    if ((request.phase === "review") !== !!item.pr) throw new Pause("Review phase does not match evidence kind")
+    const requiredEvidence = ["input.json", ...(item.changes ? ["changes.json"] : []), ...(item.pr ? ["diff.patch", "discussion.json", "ci.json", "ci-diagnostics.json"] : []), ...criteria]
     const result = await Effect.runPromise(Effect.scoped(review({ sandbox,
       database: process.env.CURATOR_DATABASE ?? path.join(homedir(), ".local/share/opencode/opencode.db"),
       guides: await guides(), system: SYSTEM, phase: request.phase, model: MODELS[request.phase],
-      prompt: `Stage: ${request.phase}. Start at REVIEW.md, then follow its route. Required guides: ${requiredGuides(!!item.pr).join(", ")}; issues also require the final classification's type guide. Read REPORT.md before returning JSON.\nRequired native reads: ${requiredEvidence.join(", ")}. Open other evidence only as needed.\nEvidence root (default directory): ${root}/evidence. Persistent writable diagnostic copies: ${root}/work/head and ${root}/work/base; set shell workdir explicitly. Installed Rust, Node, Bun and offscreen/software Qt are available; no network or credentials. ${request.completeness ? "Prior completeness is context, not proof: completeness.json." : ""}`,
+      prompt: `Stage: ${request.phase}. Start at REVIEW.md, then follow its route. Required guides: ${requiredGuides(!!item.pr).join(", ")}; issues also require the final classification's type guide. Read REPORT.md before returning JSON.\nRequired native reads: ${requiredEvidence.join(", ")}. Open other evidence only as needed.\nEvidence root (default directory): ${root}/evidence. Persistent writable diagnostic copies: ${root}/work/head and ${root}/work/base; set shell workdir explicitly. Installed Rust, Node, Bun and offscreen/software Qt are available; no network or credentials. PRs: first scan essential inputs, batch consequential gaps and stop early if necessary; otherwise continue thorough review in this same session. CI does not gate review.`,
     })).pipe(Effect.provideService(References.CurrentLoggers, new Set())), { signal: abort.signal })
     const messages = result.messages.messages
     const assistants = messages.filter(m => m.type === "assistant")

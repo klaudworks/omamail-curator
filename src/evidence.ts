@@ -7,6 +7,7 @@ import type { Snapshot } from "./snapshot.ts"
 import type { ChangeContext } from "./changes.ts"
 import { mediaType, sampleRecording } from "./media.ts"
 import { downloadMedia, mediaLinks, supportedMedia } from "./attachments.ts"
+import { ciSummary, ciFailures } from "./ci.ts"
 
 const env = { PATH: process.env.PATH, HOME: "/nonexistent", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_TERMINAL_PROMPT: "0", LANG: "C.UTF-8" }
 const command = (args: string[], input?: string) => checked(args, { env, input, timeout: 180_000 })
@@ -14,9 +15,9 @@ const validSHA = (sha: string) => { if (!/^[0-9a-f]{40}$/.test(sha)) throw new P
 
 export function updateEvidenceCI(files: Record<string, string>, snap: Snapshot) {
   const input = JSON.parse(Buffer.from(files["input.json"], "base64").toString())
-  const status = !snap.pr ? "not applicable to issues" : snap.ci_checked ? "passed" : "not checked; required before final review"
-  input.eligibility.ci_gate = status
-  input.ci = { path: "ci.json", status, workflows: snap.ci.length, jobs: snap.ci.reduce((n, run) => n + run.jobs.length, 0) }
+  const status = ciSummary(snap.ci)
+  input.eligibility.ci_gate = "none; CI is evidence, never permission to review"
+  input.ci = { path: "ci.json", status }
   files["ci.json"] = Buffer.from(JSON.stringify(snap.ci, null, 2)).toString("base64")
   files["input.json"] = Buffer.from(JSON.stringify(input, null, 2)).toString("base64")
 }
@@ -74,6 +75,25 @@ export async function collect(snap: Snapshot, config: Config, directory: string,
   if (changes) {
     files["changes.json"] = Buffer.from(JSON.stringify(changes, null, 2)).toString("base64")
     context.changes = { path: "changes.json", meaning: "The same assessed baseline, accumulated changes and workflow state used by the controller's relevance gate. Start here for incremental work; verify against current evidence." }
+  }
+  if (pr) {
+    const diagnostics: Document[] = []
+    for (const entry of ciFailures(snap.ci)) {
+      if (entry.id === null) continue
+      if (entry.key.startsWith(".github/workflows/")) {
+        const jobs = await api.pages(`/actions/runs/${entry.id}/jobs?filter=latest`, "jobs")
+        if (jobs.some(j => j.head_sha !== pr.head.sha)) throw new Pause("CI jobs refer to another revision")
+        diagnostics.push({ key: entry.key, url: entry.url, jobs: jobs.map(j => ({ name: j.name, status: j.status, conclusion: j.conclusion, url: j.html_url, steps: j.steps })), full_job_logs_collected: false })
+        continue
+      }
+      if (!entry.key.startsWith("check:")) continue
+      const check = await api.get(`/check-runs/${entry.id}`)
+      if (check.head_sha !== pr.head.sha) throw new Pause("CI diagnostics refer to another revision")
+      const annotations = await api.get(`/check-runs/${entry.id}/annotations?per_page=100`)
+      diagnostics.push({ key: entry.key, url: entry.url, output: check.output, annotations, annotations_may_be_truncated: annotations.length === 100 })
+    }
+    files["ci-diagnostics.json"] = Buffer.from(JSON.stringify(diagnostics, null, 2)).toString("base64")
+    context.ci_diagnostics = { path: "ci-diagnostics.json", meaning: "Current-head failed workflow jobs/steps, check output and first 100 annotations per check. Full job logs are not collected; absence of details is not proof of an unrelated failure." }
   }
   if (!pr) {
     const release: Document = { current_source: revisions.head }

@@ -4,17 +4,18 @@ import path from "node:path"
 import { parseArgs } from "node:util"
 import { GitHub, GitHubBackoff, GitHubTransient } from "./github.ts"
 import { Checkpoints } from "./state.ts"
-import { Completeness } from "./completeness.ts"
 import { Relevance, type Completed } from "./relevance.ts"
 import { Publisher, type Provenance } from "./publisher.ts"
 import { snapshot, validateScope, type Snapshot } from "./snapshot.ts"
-import { collect, updateEvidenceCI } from "./evidence.ts"
+import { collect } from "./evidence.ts"
 import { reviewBasis } from "./changes.ts"
+import { updateFindings } from "./findings.ts"
+import { ciSummary, compatibleCI, validateCI } from "./ci.ts"
 import { run } from "./io.ts"
-import { contractVersion, MODELS, Pause, Stop, CIWait, assessment, eligible, readConfig, type Config, type Phase, type Assessment } from "./policy.ts"
+import { contractVersion, MODELS, Pause, Stop, assessment, eligible, readConfig, type Config, type Phase } from "./policy.ts"
 
-async function model(config: Config, files: Record<string, string>, phase: Phase, logdir: string, completeness?: Assessment) {
-  const response = await run([...config.transport], { input: JSON.stringify({ phase, host_time: Date.now() / 1000, files, completeness }) })
+async function model(config: Config, files: Record<string, string>, phase: Phase, logdir: string) {
+  const response = await run([...config.transport], { input: JSON.stringify({ phase, host_time: Date.now() / 1000, files }) })
   await writeFile(path.join(logdir, `${phase}-transport.log`), response.stderr)
   let result
   try { result = JSON.parse(response.stdout.toString()) } catch { throw new Pause("Guest transport returned no valid result") }
@@ -27,10 +28,9 @@ async function model(config: Config, files: Record<string, string>, phase: Phase
 
 export async function processItem(api: GitHub, config: Config, checkpoints: Checkpoints, number: number, dryRun = false, gateOnly = false) {
   const publisher = new Publisher(api, config, checkpoints)
-  const passes = new Completeness(config)
   const relevance = new Relevance(config, checkpoints)
   let snap: Snapshot
-  try { snap = await snapshot(api, config, checkpoints, number, false, !gateOnly, gateOnly) }
+  try { snap = await snapshot(api, config, checkpoints, number) }
   catch (error) {
     if (error instanceof Stop) {
       const item = await api.get(`/issues/${number}`)
@@ -39,19 +39,11 @@ export async function processItem(api: GitHub, config: Config, checkpoints: Chec
     throw error
   }
   if (gateOnly) return { number, gate: "eligible", ci: snap.ci, models_started: 0 }
-  const finalGate = async (polling = false) => {
-    try { snap = await publisher.fresh(snap, false, true, polling) }
-    catch (error) {
-      if (error instanceof Stop && !dryRun) await publisher.invalidate(await api.get(`/issues/${number}`))
-      if (error instanceof CIWait && !dryRun) await publisher.progress(snap, error.progress)
-      throw error
-    }
-  }
   const finish = async (completed: Completed, comment?: boolean) => {
     // Save model work before any publication or secondary decision can fail.
     completed = { ...completed, basis: completed.basis ?? reviewBasis(snap, checkpoints) }
     await relevance.retain(snap, completed, comment)
-    const current = await snapshot(api, config, checkpoints, number, false, false, completed.phase === "final")
+    const current = await snapshot(api, config, checkpoints, number)
     const reconciled = await relevance.reconcile(current, completed)
     if (!reconciled) throw new Stop("publication inputs changed materially; retained result cannot be reused")
     completed = reconciled
@@ -59,22 +51,19 @@ export async function processItem(api: GitHub, config: Config, checkpoints: Chec
     comment ??= await relevance.commentNeeded(snap, completed.assessment)
     await relevance.retain(snap, completed, comment)
     const published = await publisher.publish(snap, completed.assessment, completed.phase, completed.sessions, comment,
-      { assessment_fingerprint: completed.basis!.fingerprint, discussion_recheck: completed.discussion_recheck })
+      { assessment_fingerprint: completed.basis!.fingerprint, discussion_recheck: completed.discussion_recheck, findings: completed.findings, assessed_ci: completed.basis!.ci })
     await relevance.remember(snap, await publisher.fresh(snap, completed.assessment.state === "deferred"), completed)
     return { ...published, comment_published: comment }
   }
   const pending = await relevance.pending(snap)
   if (pending && !dryRun) {
-    if (pending.phase === "final" && !pending.basis) await finalGate()
     const reusable = await relevance.reconcile(snap, { ...pending, basis: pending.basis ?? reviewBasis(snap, checkpoints) })
     if (reusable) {
-      if (reusable.phase === "final") await finalGate()
       return { ...await finish(reusable, pending.comment), reused: true, models_started: 0 }
     }
   }
-  if (snap.previous?.contract_version === contractVersion(!!snap.pr) && snap.previous.fingerprint === snap.fingerprint && !await relevance.needsEvidenceReview(snap)) {
-    if (snap.previous.phase === "final") await finalGate(true)
-    const completed = await relevance.restore(snap, { assessment: snap.previous.assessment, phase: snap.previous.phase, sessions: snap.previous.sessions })
+  if (snap.previous?.contract_version === contractVersion(!!snap.pr) && snap.previous.fingerprint === snap.fingerprint) {
+    const completed = await relevance.restore(snap, { assessment: snap.previous.assessment, phase: snap.previous.phase, sessions: snap.previous.sessions, findings: snap.previous.tracked_findings })
     if (completed) {
       if (dryRun) return { number, state: "unchanged", models_started: 0 }
       if (!pending && publisher.settled(snap, completed.assessment, completed.phase, completed.sessions) &&
@@ -86,21 +75,15 @@ export async function processItem(api: GitHub, config: Config, checkpoints: Chec
   }
   // Never leave a new commit labelled as fully reviewed merely because the
   // relevance decision is pending or says that another assessment is unnecessary.
-  if (!dryRun && snap.pr && (snap.previous?.head !== snap.pr.head.sha || snap.previous?.base !== snap.pr.base.sha)) await publisher.invalidate(snap.item)
-  let retained = await passes.load(snap)
-  const { context, ...decision } = await relevance.decide(api, snap, dryRun, retained?.result ?? null)
+  if (!dryRun && snap.pr && (snap.previous?.contract_version !== contractVersion(true) || snap.previous?.head !== snap.pr.head.sha || snap.previous?.base !== snap.pr.base.sha || !compatibleCI(snap.previous?.assessed_ci ?? null, snap.ci))) await publisher.invalidate(snap.item)
+  const { context, ...decision } = await relevance.decide(api, snap, dryRun)
   if (!decision.review) {
-    if (snap.pr && snap.previous?.phase === "final") await finalGate(true)
+    if (!dryRun && snap.pr) await publisher.progress(snap, `Previous assessment retained; reviewed commit ${(snap.previous?.head ?? "unknown").slice(0, 7)}. CI: ${ciSummary(snap.ci)}`)
     return { number, state: "unchanged", ...decision, models_started: 0 }
   }
   await publisher.fresh(snap)
-  if (retained && decision.stage === "completeness") {
-    if (!dryRun) await passes.invalidate(snap)
-    retained = null
-  }
-  if (retained) await finalGate()
   if (!dryRun) await publisher.invalidate(snap.item)
-  if (!dryRun) await publisher.progress(snap, retained ? "Reviewing the current changes." : "Checking completeness.")
+  if (!dryRun) await publisher.progress(snap, "Reviewing essential inputs, then investigating if assessable. CI does not delay review.")
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z")
   const logdir = path.join(config.state_dir, "runs", `${stamp}-${number}-${randomBytes(3).toString("hex")}`)
   await mkdir(logdir, { recursive: true, mode: 0o700 })
@@ -108,29 +91,15 @@ export async function processItem(api: GitHub, config: Config, checkpoints: Chec
   try {
     const files = await collect(snap, config, temp, checkpoints, api, context)
     await publisher.fresh(snap)
-    const completeness = retained ?? await model(config, files, "completeness", logdir)
-    let result = validateScope(completeness.result, snap, config, checkpoints), phase: Phase = "completeness"
-    const sessions = [completeness.provenance]
-    if (result.state === "continue") {
-      if (!snap.pr) throw new Pause("Issue incorrectly requested PR review")
-      if (!dryRun && !retained) await passes.save(snap, result, completeness.provenance)
-      if (!dryRun) await publisher.completenessPassed(snap, result, completeness.provenance)
-      try { await finalGate() }
-      catch (error) {
-        if (!(error instanceof Stop)) throw error
-        const stopped = { number, state: "stopped", reason: error.message, completeness_passed: true, models_started: retained ? 0 : 1, ...(dryRun ? { dry_run: true } : {}) }
-        await writeFile(path.join(logdir, "result.json"), JSON.stringify({ ...stopped, phase, assessment: result, sessions }, null, 2))
-        return stopped
-      }
-      updateEvidenceCI(files, snap)
-      if (!dryRun) await publisher.progress(snap, "Completeness passed; reviewing the current changes.")
-      const final = await model(config, files, "final", logdir, result)
-      if (final.provenance.session === completeness.provenance.session) throw new Pause("Final review must use a fresh session")
-      result = validateScope(final.result, snap, config, checkpoints); phase = "final"; sessions.push(final.provenance)
-    }
-    const output = { number, phase, assessment: result, sessions, completeness_reused: !!retained }
+    const phase: Phase = snap.pr ? "review" : "completeness"
+    const reviewed = await model(config, files, phase, logdir)
+    if (snap.pr) validateCI(reviewed.result, snap.ci)
+    const result = validateScope(reviewed.result, snap, config, checkpoints)
+    const findings = snap.pr ? updateFindings(context.workflow.findings, reviewed.result, snap.pr.head.sha) : undefined
+    const sessions = [reviewed.provenance]
+    const output = { number, phase, assessment: result, sessions, findings, models_started: 1 }
     await writeFile(path.join(logdir, "result.json"), JSON.stringify(output, null, 2))
-    return dryRun ? { ...output, dry_run: true, relevance: decision } : { ...await finish({ assessment: result, phase, sessions, basis: reviewBasis(snap, checkpoints) }), relevance: decision }
+    return dryRun ? { ...output, dry_run: true, relevance: decision } : { ...await finish({ assessment: result, phase, sessions, findings, basis: reviewBasis(snap, checkpoints) }), models_started: 1, relevance: decision }
   } finally { await rm(temp, { recursive: true, force: true }) }
 }
 
